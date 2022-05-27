@@ -1,34 +1,52 @@
+
 AWSTemplateFormatVersion: "2010-09-09"
 
 Description: >
-    Creating EC2 Instance with SSM parameters
+    Creating EC2 Instance attached with mappings, parameters
+    and environment type. The below cfn template creates stack based on the region and 
+    respective ami-id.   
 
+
+Mappings:
+  RegionAMIMap:
+    ap-south-1:
+      HVM64: "ami-079b5e5b3971bd10d"
+    us-east-2:
+      HVM64: "ami-0fa49cc9dc8d62c84"
+
+  EnvironmentMap:
+    dev:
+      instanceType: t2.small
+        
+    prod:
+      instanceType: t3.medium
+    
+# Make sure a key-pair is available in the mentioned regions  
 
 Parameters:
   SelectKey:
     Description: Please select available key pair
-    Type: 'AWS::EC2::KeyPair::KeyName'
-  
-
-  #Create SSM Parameter in SSM Parameters Store 
-
-  SelectInstance:
-    Description: Select the intance types from the SSM parameter list
-    Type: 'AWS::SSM::Parameter::Value<String>' 
+    Type: 'AWS::EC2::KeyPair::KeyName'  
 
 
   SelectAZ:
-    Description: For t2.micro choose 1a or 1b.
+    Description: Select the availability zone
     Type: String
     Default: "ap-south-1a"
     AllowedValues:
       - "ap-south-1a"
       - "ap-south-1b"
       - "ap-south-1c"
-      - "us-east-1a"
-      - "us-east-1b"
       - "us-east-2a"
       - "us-east-2b"
+
+  EnvironmentType:
+    Description: Select environment type
+    Default: "dev"
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
 
 
 Resources:
@@ -98,8 +116,15 @@ Resources:
   DevNewInstance:
     Type: 'AWS::EC2::Instance'
     Properties:
-      ImageId: "ami-079b5e5b3971bd10d"
-      InstanceType: !Ref SelectInstance
+      ImageId: !FindInMap 
+        - RegionAMIMap
+        - !Ref 'AWS::Region'
+        - HVM64
+      InstanceType: !FindInMap 
+        - EnvironmentMap
+        - !Ref EnvironmentType
+        - instanceType
+
       KeyName: !Ref SelectKey
       AvailabilityZone: !Ref SelectAZ
       SubnetId: !Ref DevSubnetPublic
