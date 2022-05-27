@@ -1,0 +1,35 @@
+
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+    Creating EC2 Instance
+
+
+Resources:
+  DevInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: "ami-079b5e5b3971bd10d"
+      InstanceType: t2.micro
+      KeyName: "cfn-key-1"
+      AvailabilityZone: ap-south-1a
+      SubnetId: "subnet-0a35759c8f3801471"
+      SecurityGroupIds: 
+        - !GetAtt DevSecurityGroup.GroupId
+
+  DevSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: "DevInstance security group"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+      VpcId: "vpc-071f89bcf458e94f0"
+
+  DevElasticIp:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      InstanceId: !Ref DevInstance
+

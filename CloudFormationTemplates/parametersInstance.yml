@@ -1,0 +1,133 @@
+
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+    Creating EC2 Instance attached without parameters
+
+
+Parameters:
+  SelectKey:
+    Description: Please select available key pair
+    Type: 'AWS::EC2::KeyPair::KeyName'
+  
+  SelectInstance:
+    Description: Only the following intance types are available
+    Type: String
+    Default: "t2.micro"
+    AllowedValues:
+      - t2.micro
+      - t2.medium
+      - t3.medium
+      - c5.large
+
+  SelectAZ:
+    Description: For t2.micro choose 1a or 1b.
+    Type: String
+    Default: "ap-south-1a"
+    AllowedValues:
+      - "ap-south-1a"
+      - "ap-south-1b"
+      - "ap-south-1c"
+      - "us-east-1a"
+      - "us-east-1b"
+      - "us-east-2a"
+
+
+Resources:
+  DevVpc:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: "192.0.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: stack
+          Value: development
+  
+
+  DevSubnetPublic:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Ref SelectAZ
+      CidrBlock: "192.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: stack
+          Value: development
+      VpcId: !Ref DevVpc
+
+  
+  DevInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: stack
+          Value: development
+
+  
+  DevIGWAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !GetAtt DevInternetGateway.InternetGatewayId
+      VpcId: !Ref DevVpc
+
+  
+  DevPublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      Tags: 
+        - Key: stack
+          Value: development
+      VpcId: !Ref DevVpc
+
+  
+  DevPublicRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !GetAtt DevInternetGateway.InternetGatewayId
+      RouteTableId: !GetAtt DevPublicRouteTable.RouteTableId
+
+  
+  DevSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !GetAtt DevPublicRouteTable.RouteTableId
+      SubnetId: !Ref DevSubnetPublic
+
+
+
+  DevNewInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: "ami-079b5e5b3971bd10d"
+      InstanceType: !Ref SelectInstance
+      KeyName: !Ref SelectKey
+      AvailabilityZone: !Ref SelectAZ
+      SubnetId: !Ref DevSubnetPublic
+      SecurityGroupIds: 
+        - !GetAtt DevNewSecurityGroup.GroupId
+      
+
+
+  DevNewSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: "DevNewInstance security group"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref DevVpc
+
+
+  DevElasticIp:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      InstanceId: !Ref DevNewInstance
+
