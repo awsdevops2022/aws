@@ -197,7 +197,8 @@ Outputs:
     Description: The port 8080 security group-id
     Value: !GetAtt EightyEightySecurityGroup.GroupId
     Export:
-      Name: !Sub "${AWS::StackName}-port8080-id"
+      Name: !Join [":", [!Ref 'AWS::StackName', port8080-id]]
+    
 
   InstanceAddress: 
     Description: The instance Public IP 
@@ -211,8 +212,10 @@ Outputs:
  
   EIPAddress:
     Description: The Elastic IP address
+    Condition: EIPProdAZ
     Value: !Ref DevElasticIp
   
   EIPAllocationInstance:
     Description: The Allocation id to which EIP is associated
+    Condition: EIPProdAZ
     Value: !GetAtt DevElasticIp.AllocationId
