@@ -207,8 +207,7 @@ Outputs:
   InstancePublicDNSName:
     Description: The public DNS name of the instance
     Value: !GetAtt DevNewInstance.PublicDnsName
-
- # the output for below sections is only possible if the environment is prod and us-east-2a as mentioned above. Else it will cause unresolved dependencies 
+    
  
   EIPAddress:
     Description: The Elastic IP address
