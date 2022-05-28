@@ -59,7 +59,7 @@ Conditions:
   EIPProdAZ: !And 
     - !Condition EIPForProd
     - !Condition EIPForAZ
-
+  
 
 Resources:
   DevVpc:
@@ -142,7 +142,6 @@ Resources:
       SubnetId: !Ref DevSubnetPublic
       SecurityGroupIds: 
         - !GetAtt DevNewSecurityGroup.GroupId
-      
 
 
   DevNewSecurityGroup:
