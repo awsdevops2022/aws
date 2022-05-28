@@ -4,7 +4,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >
     Creating EC2 Instance attached with mappings, parameters
     and environment type, Conditions. The below cfn template creates stack based on the region and 
-    respective ami-id, environment type and availability zone. Fn::Sub, Export are also used.
+    respective ami-id, environment type and availability zone. Fn::Sub, Fn::Join, Export are also used.
 
 
 Mappings:
