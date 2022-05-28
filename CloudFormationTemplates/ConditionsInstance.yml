@@ -1,0 +1,169 @@
+
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+    Creating EC2 Instance attached with mappings, parameters
+    and environment type, Conditions. The below cfn template creates stack based on the region and 
+    respective ami-id, environment type and availability zone.   
+
+
+Mappings:
+  RegionAMIMap:
+    ap-south-1:
+      HVM64: "ami-079b5e5b3971bd10d"
+    us-east-2:
+      HVM64: "ami-0fa49cc9dc8d62c84"
+
+  EnvironmentMap:
+    dev:
+      instanceType: t2.small
+        
+    prod:
+      instanceType: t3.medium
+    
+# Make sure a key-pair is available in the mentioned regions  
+
+Parameters:
+  SelectKey:
+    Description: Please select available key pair
+    Type: 'AWS::EC2::KeyPair::KeyName'  
+
+
+  SelectAZ:
+    Description: Select the availability zone
+    Type: String
+    Default: "ap-south-1a"
+    AllowedValues:
+      - "ap-south-1a"
+      - "ap-south-1b"
+      - "ap-south-1c"
+      - "us-east-2a"
+      - "us-east-2b"
+
+  EnvironmentType:
+    Description: Select environment type
+    Default: "dev"
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+    ConstraintDescription: must specify dev or prod environment
+  
+Conditions:
+  EIPForProd: !Equals [!Ref EnvironmentType, prod]
+  
+  EIPForAZ: !Equals 
+    - !Ref SelectAZ
+    - "us-east-2a"
+
+  EIPProdAZ: !And 
+    - !Condition EIPForProd
+    - !Condition EIPForAZ
+
+
+Resources:
+  DevVpc:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: "192.0.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: stack
+          Value: development
+  
+
+  DevSubnetPublic:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Ref SelectAZ
+      CidrBlock: "192.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: stack
+          Value: development
+      VpcId: !Ref DevVpc
+
+  
+  DevInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: stack
+          Value: development
+
+  
+  DevIGWAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !GetAtt DevInternetGateway.InternetGatewayId
+      VpcId: !Ref DevVpc
+
+  
+  DevPublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      Tags: 
+        - Key: stack
+          Value: development
+      VpcId: !Ref DevVpc
+
+  
+  DevPublicRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !GetAtt DevInternetGateway.InternetGatewayId
+      RouteTableId: !GetAtt DevPublicRouteTable.RouteTableId
+
+  
+  DevSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !GetAtt DevPublicRouteTable.RouteTableId
+      SubnetId: !Ref DevSubnetPublic
+
+
+
+  DevNewInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !FindInMap 
+        - RegionAMIMap
+        - !Ref 'AWS::Region'
+        - HVM64
+      InstanceType: !FindInMap 
+        - EnvironmentMap
+        - !Ref EnvironmentType
+        - instanceType
+
+      KeyName: !Ref SelectKey
+      AvailabilityZone: !Ref SelectAZ
+      SubnetId: !Ref DevSubnetPublic
+      SecurityGroupIds: 
+        - !GetAtt DevNewSecurityGroup.GroupId
+      
+
+
+  DevNewSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: "DevNewInstance security group"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref DevVpc
+
+# ElasticIp is not created when the Condition is not satisfied
+
+  DevElasticIp:
+    Type: 'AWS::EC2::EIP'
+    Condition: EIPProdAZ  
+    Properties:
+      InstanceId: !Ref DevNewInstance
