@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+    Creating EC2 Instance with cfn-init, cfn-hup and cfn-signal helper scripts
+    to install software applications.
+
+
+Parameters:
+  SelectKey:
+    Description: Please select available key pair
+    Type: 'AWS::EC2::KeyPair::KeyName'
+  
+  SelectInstance:
+    Description: Only the following intance types are available
+    Type: String
+    Default: "t2.micro"
+    AllowedValues:
+      - t2.micro
+      - t2.medium
+      - t3.medium
+      - c5.large
+
+  SelectAZ:
+    Description: For t2.micro choose 1a or 1b.
+    Type: String
+    Default: "ap-south-1a"
+    AllowedValues:
+      - "ap-south-1a"
+      - "ap-south-1b"
+      - "ap-south-1c"
+      - "us-east-2a"
+      - "us-east-2b"
+
+Mappings:
+  AWSRegionArch2AMI:
+    ap-south-1: 
+      HVM64: "ami-079b5e5b3971bd10d"
+    us-east-2:
+      HVM64: "ami-0fa49cc9dc8d62c84"
+
+
+Resources:
+  DevVpc:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: "192.0.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: stack
+          Value: development
+  
+
+  DevSubnetPublic:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Ref SelectAZ
+      CidrBlock: "192.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: stack
+          Value: development
+      VpcId: !Ref DevVpc
+
+  
+  DevInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: stack
+          Value: development
+
+  
+  DevIGWAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !GetAtt DevInternetGateway.InternetGatewayId
+      VpcId: !Ref DevVpc
+
+  
+  DevPublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      Tags: 
+        - Key: stack
+          Value: development
+      VpcId: !Ref DevVpc
+
+  
+  DevPublicRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !GetAtt DevInternetGateway.InternetGatewayId
+      RouteTableId: !GetAtt DevPublicRouteTable.RouteTableId
+
+  
+  DevSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !GetAtt DevPublicRouteTable.RouteTableId
+      SubnetId: !Ref DevSubnetPublic
+
+
+
+  DevNewInstance:
+    Type: 'AWS::EC2::Instance'
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              git: []
+              docker: []
+              httpd: []
+
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=3 #minutes
+              mode: "000400"
+              owner: "root"
+              group: "root"
+          
+            "/etc/cfn/hooks.d/cfn-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.DevNewInstance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource DevNewInstance --region ${AWS::Region}
+              mode: "000400"
+              owner: "root"
+              group: "root"
+         
+          commands:
+            docker_for_ec2-user:
+              command: "usermod -aG docker ec2-user"
+              cwd: "~"
+            
+          services:
+            sysvinit:
+              docker:
+                enable: "true"
+                ensureRunning: "true"
+              
+              httpd:
+                enable: "true"
+                ensureRunning: "true"
+
+    Properties:
+      ImageId: !FindInMap
+        - AWSRegionArch2AMI
+        - !Ref 'AWS::Region'
+        - HVM64
+      InstanceType: !Ref SelectInstance
+      KeyName: !Ref SelectKey
+      AvailabilityZone: !Ref SelectAZ
+      SubnetId: !Ref DevSubnetPublic
+      SecurityGroupIds: 
+        - !GetAtt DevNewSecurityGroup.GroupId
+      
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash -xe
+            # Get latest CloudFormation package - These packages change frequently
+            yum update -y aws-cfn-bootstrap
+
+            # Start cfn-init to Install all Metadata content (packages, sources, files, commands and services)
+            /opt/aws/bin/cfn-init --stack ${AWS::StackId} --resource DevNewInstance --region ${AWS::Region} || error_exit 'Failed to run cfn-init'
+
+            # Signal the status from cfn-init
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource DevNewInstance --region ${AWS::Region}
+
+            # Start cfn-hup daemon so that it will keep listening to any changes to EC2 Instance Metadata.
+            /opt/aws/bin/cfn-hup || error_exit 'Failed to start cfn-hup'
+
+      
+
+  DevNewSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: "DevNewInstance security group"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref DevVpc
+
+Outputs:
+  InstanceInfo:
+    Description: The public-ip address
+    Value: !Sub "${DevNewInstance.PublicIp}"
+
+  InstancepublicDnsName:
+    Description: The public DNS name
+    Value: !Sub "${DevNewInstance.PublicDnsName}"
