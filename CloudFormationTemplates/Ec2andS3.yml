@@ -95,6 +95,7 @@ Resources:
 
   DevNewInstance:
     Type: 'AWS::EC2::Instance'
+    
     Properties:
       ImageId: "ami-079b5e5b3971bd10d"
       InstanceType: !Ref SelectInstance
