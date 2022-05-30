@@ -1,8 +1,7 @@
-
 AWSTemplateFormatVersion: "2010-09-09"
 
 Description: >
-    Creating EC2 Instance attached without parameters
+    Creating EC2 and S3 and making the objects publicly accessible 
 
 
 Parameters:
@@ -128,7 +127,7 @@ Resources:
     Type: 'AWS::S3::Bucket'
     DeletionPolicy: Retain
     Properties:
-      AccessControl: "PublicRead"
+      AccessControl: "PublicRead" #This gives permissions to public acces i.e., everyone can access it but cannot write or delete it.
       BucketName: war-file-bucket-29 #Choose unique name
       PublicAccessBlockConfiguration:
         BlockPublicAcls: false
