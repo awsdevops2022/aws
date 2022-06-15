@@ -1,0 +1,161 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+  Step functions is used invoke lambda to publish SNS notification to mobile number.
+  However, here we demonstrate how if one state fails, the errors are captured for 
+  better debugging. 
+  Note: For triggering SNS notification requires better programming script be it Node.js
+  or python, etc.
+  Please read the Node.js code before execution 
+
+Parameters:
+  SelectRegion:
+    Description: "Select the region"
+    Type: String
+    Default: "ap-south-1"
+    AllowedValues:
+      - ap-south-1
+      - us-east-1
+      - eu-west-1
+  
+  SelectArch:
+    Description: "Select the architecture"
+    Type: String
+    Default: "x86_64"
+    AllowedValues:
+      - "x86_64"
+      - "arm64"
+  
+
+Resources:
+  CreateSnsTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      DisplayName: cfnSnsLambdaNotify
+      Subscription:
+        - 
+          Endpoint: !GetAtt CreateLambdaFunction.Arn
+          Protocol: lambda
+      TopicName: "SNSlambdaNotifyCfn"
+
+  
+  CreateSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Endpoint: !GetAtt CreateLambdaFunction.Arn
+      Protocol: lambda
+      TopicArn: !Ref CreateSnsTopic
+
+
+  CreateLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code: 
+        ZipFile: |
+          const aws =  require("aws-sdk");
+          const sns = new aws.SNS({
+            region:'#Same region as selected in choosing parameters'         
+          });
+          exports.handler = function(event, context, callback) {
+              console.log("AWS lambda and SNS trigger");
+              console.log(event);
+              const snsmessage = event.Records[0].Sns.Message;
+              console.log(snsmessage);
+              sns.publish({
+                Message: snsmessage,
+                PhoneNumber: '#Provide the mobile number along with country code'  
+              }, function (err, data) {
+                 if (err) {
+                    console.log(err);
+                    callback(err, null);
+                 } else {
+                    console.log(data);
+                    callback(null, data);
+                 }	
+              });
+          };
+      Description: To trigger SNS for notification
+      FunctionName: CfnLambdaSnsNotify
+      Handler: index.handler
+      Runtime: nodejs12.x
+      Role: arn:aws:iam::819825051806:role/LambdaSnsNotify
+      Timeout:  60 #in seconds
+      TracingConfig:
+        Mode: Active
+
+
+
+  LambdaInvokePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref CreateLambdaFunction
+      SourceArn: !Ref CreateSnsTopic
+      Principal: sns.amazonaws.com
+  
+  
+  StatesExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: StatesExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                 - "lambda:InvokeFunction"
+                Resource: "*"
+
+  
+  LambdaSNSNotifyStateMachine:
+    Type: 'AWS::StepFunctions::StateMachine'
+    Properties:
+      DefinitionString: 
+        !Sub 
+          - |-
+            {
+              "Comment": "A Lambda invoke to send SNS mobile notification example",
+              "StartAt": "LambdaSnsNotify",
+              "States": {
+                "LambdaSnsNotify": {
+                  "Type": "Task",
+                  "Resource": "${lambdaArn}",
+                  "Parameters": {
+                    "TopicArn": "${CreateSnsTopic}",
+                    "Message.$": "$.input.message"
+                  },
+                  "Catch": [
+                    {
+                      "ErrorEquals": [
+                        "States.ALL"
+                      ],
+                      "Next": "fallback"
+                    }
+                  ],
+                  "End": true
+                },
+                "fallback": {
+                  "Type": "Pass",
+                  "Result": "Failed to Create",
+                  "End": true
+                }
+              }
+            }
+          - {lambdaArn: !GetAtt [ CreateLambdaFunction, Arn ]}
+      RoleArn: !GetAtt StatesExecutionRole.Arn
+      StateMachineName: LambdaSNSNotify-SM
+      StateMachineType: STANDARD
+      Tags:
+        - 
+          Key: "lambda"
+          Value: "SnsNotify"
