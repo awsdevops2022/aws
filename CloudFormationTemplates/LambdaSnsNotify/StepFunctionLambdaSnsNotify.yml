@@ -28,6 +28,8 @@ Parameters:
   
 
 Resources:
+
+#SNS
   CreateSnsTopic:
     Type: 'AWS::SNS::Topic'
     Properties:
@@ -46,6 +48,7 @@ Resources:
       Protocol: lambda
       TopicArn: !Ref CreateSnsTopic
 
+#Lambda
 
   CreateLambdaFunction:
     Type: 'AWS::Lambda::Function'
@@ -116,6 +119,7 @@ Resources:
                  - "lambda:InvokeFunction"
                 Resource: "*"
 
+#StepFunctions
   
   LambdaSNSNotifyStateMachine:
     Type: 'AWS::StepFunctions::StateMachine'
