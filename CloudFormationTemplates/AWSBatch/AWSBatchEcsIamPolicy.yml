@@ -1,0 +1,380 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >- 
+  To create AWS Batch Job with ECR, ECS instances, AutoScaling and IAM Policies.
+  Note: The Docker Image must exist in ECR which can be built using CodeBuild.
+
+Parameters:
+  computeEnvParameter:
+    Description: The name of the compute env
+    Type: String
+    Default: computeEnv
+
+  SelectKeyPair:
+    Description: Select the key
+    Type: 'AWS::EC2::KeyPair::KeyName'
+
+  SelectInstanceTypes:
+    Description: Select instance type for compute env
+    Type: String
+    Default: "c4.large"
+    AllowedValues:
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+  
+  listofAZs:
+    Description: Select the AZ
+    Type: String
+    Default: "ap-south-1a"
+    AllowedValues:
+      - ap-south-1a
+      - ap-south-1b
+      - us-east-2a
+
+
+Mappings:
+  AWSRegionArch2AMI:
+    ap-south-1: 
+      HVM64: "ami-079b5e5b3971bd10d"
+    us-east-2:
+      HVM64: "ami-0fa49cc9dc8d62c84"
+
+
+
+Resources:
+  batchVPC:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: 
+        - Key: Name
+          Value: !Sub "batchVPC-${AWS::StackName}"
+
+  
+  batchSubnetPublic:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: !Ref listofAZs
+      CidrBlock: "10.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      Tags: 
+        - Key: Name
+          Value: batchSubnetPublic1
+      VpcId: !Ref batchVPC
+
+ 
+ 
+  batchSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: "AWSBatch security group"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref batchVPC
+
+
+#AWS Batch 
+#reference : https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_Batch.html
+
+  myComputeEnv:
+    Type: 'AWS::Batch::ComputeEnvironment'
+    Properties:
+      ComputeEnvironmentName: !Join
+        - ''
+        - - !Ref computeEnvParameter
+          - !Sub "-${AWS::StackName}"
+      ComputeResources: 
+        AllocationStrategy: BEST_FIT
+        DesiredvCpus: 8
+        Ec2KeyPair: !Ref SelectKeyPair
+        ImageId: !FindInMap
+          - AWSRegionArch2AMI
+          - !Ref 'AWS::Region'
+          - HVM64
+
+        InstanceRole: !GetAtt ecsroleInstanceProfile.Arn
+        InstanceTypes: 
+          - !Ref SelectInstanceTypes
+        MaxvCpus: 36    #make sure the number of vCPUs match the instance type in the parameters. Ref-https://aws.amazon.com/ec2/instance-types/
+        MinvCpus: 2
+        SecurityGroupIds: 
+          - !GetAtt batchSecurityGroup.GroupId
+        Subnets: 
+          - !Ref batchSubnetPublic
+        Type: EC2
+      State: ENABLED
+      Type: MANAGED
+      ServiceRole: !GetAtt BatchJobServiceRole.Arn
+    DependsOn: 
+      - batchroleInstanceProfile
+  
+  
+  BatchJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties: 
+      ContainerProperties: 
+        #Command: 
+          #- String
+        #Environment: 
+          #- Environment
+        #ExecutionRoleArn:
+        #FargatePlatformConfiguration: 
+          #FargatePlatformConfiguration
+        Image: '819825051806.dkr.ecr.ap-south-1.amazonaws.com/base-images:latest'
+        #JobRoleArn: 
+        #LinuxParameters: 
+          #LinuxParameters
+        #LogConfiguration: 
+          #LogConfiguration
+        MountPoints: 
+         - ContainerPath: "/tmp"
+           ReadOnly: false
+           SourceVolume: "/var"
+        Volumes:
+          - Host:
+              SourcePath: /var
+            Name: SomeVolume
+        #NetworkConfiguration: 
+          #NetworkConfiguration
+        Privileged: true
+        ReadonlyRootFilesystem: false
+        ResourceRequirements: 
+          - Type: MEMORY
+            Value: 500 #in MiB
+          - Type: VCPU
+            Value: 1
+        #Secrets: 
+          #- Secret
+        #Ulimits: 
+          #- Ulimit
+        #User: String
+      JobDefinitionName: !Sub "Batch-${AWS::StackName}"
+      #NodeProperties: 
+      #Parameters: Json
+      PlatformCapabilities: 
+       - EC2
+      #PropagateTags: Boolean
+      #RetryStrategy: 
+      SchedulingPriority: 1
+      #Tags: Json
+      Timeout: 
+        AttemptDurationSeconds: 120
+      Type: container
+    DependsOn: myComputeEnv
+
+
+  MyJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties: 
+      ComputeEnvironmentOrder: 
+        - ComputeEnvironment: !Ref myComputeEnv
+          Order: 1
+      JobQueueName: !Sub "Batch-${AWS::StackName}"
+      Priority: 1
+      #SchedulingPolicyArn: String
+      State: ENABLED
+      #Tags: 
+       #Key : Value   
+    DependsOn: myComputeEnv     
+
+#IAM Roles and Policies
+#ServiceRoleForBatch
+#Reference: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iam-role.html#aws-resource-iam-role--examples
+
+  BatchJobServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - batch.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Description: Service role for AWS Batch
+      Policies: 
+        - PolicyName: !Join
+            - ''
+            - - !Ref computeEnvParameter
+              - !Sub "-batchJobPolicy-${AWS::StackName}"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement: 
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeAccountAttributes'
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:DescribeInstanceAttribute'
+                  - 'ec2:DescribeSubnets'
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:DescribeKeyPairs'
+                  - 'ec2:DescribeImages'
+                  - 'ec2:DescribeImageAttribute'
+                  - 'ec2:DescribeInstanceStatus'
+                  - 'ec2:DescribeSpotInstanceRequests'
+                  - 'ec2:DescribeSpotFleetInstances'
+                  - 'ec2:DescribeSpotFleetRequests'
+                  - 'ec2:DescribeSpotPriceHistory'
+                  - 'ec2:DescribeVpcClassicLink'
+                  - 'ec2:DescribeLaunchTemplateVersions'
+                  - 'ec2:CreateLaunchTemplate'
+                  - 'ec2:DeleteLaunchTemplate'
+                  - 'ec2:RequestSpotFleet'
+                  - 'ec2:CancelSpotFleetRequests'
+                  - 'ec2:ModifySpotFleetRequest'
+                  - 'ec2:TerminateInstances'
+                  - 'ec2:RunInstances'
+                  - 'autoscaling:DescribeAccountLimits'
+                  - 'autoscaling:DescribeAutoScalingGroups'
+                  - 'autoscaling:DescribeLaunchConfigurations'
+                  - 'autoscaling:DescribeAutoScalingInstances'
+                  - 'autoscaling:CreateLaunchConfiguration'
+                  - 'autoscaling:CreateAutoScalingGroup'
+                  - 'autoscaling:UpdateAutoScalingGroup'
+                  - 'autoscaling:SetDesiredCapacity'
+                  - 'autoscaling:DeleteLaunchConfiguration'
+                  - 'autoscaling:DeleteAutoScalingGroup'
+                  - 'autoscaling:CreateOrUpdateTags'
+                  - 'autoscaling:SuspendProcesses'
+                  - 'autoscaling:PutNotificationConfiguration'
+                  - 'autoscaling:TerminateInstanceInAutoScalingGroup'
+                  - 'ecs:DescribeClusters'
+                  - 'ecs:DescribeContainerInstances'
+                  - 'ecs:DescribeTaskDefinition'
+                  - 'ecs:DescribeTasks'
+                  - 'ecs:ListAccountSettings'
+                  - 'ecs:ListClusters'
+                  - 'ecs:ListContainerInstances'
+                  - 'ecs:ListTaskDefinitionFamilies'
+                  - 'ecs:ListTaskDefinitions'
+                  - 'ecs:ListTasks'
+                  - 'ecs:CreateCluster'
+                  - 'ecs:DeleteCluster'
+                  - 'ecs:RegisterTaskDefinition'
+                  - 'ecs:DeregisterTaskDefinition'
+                  - 'ecs:RunTask'
+                  - 'ecs:StartTask'
+                  - 'ecs:StopTask'
+                  - 'ecs:UpdateContainerAgent'
+                  - 'ecs:DeregisterContainerInstance'
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogGroups'
+                  - 'iam:GetInstanceProfile'
+                  - 'iam:GetRole'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'ecs:TagResource'
+                Resource:
+                  - 'arn:aws:ecs:*:*:task/*_Batch_*'
+              - Effect: Allow
+                Action: 'iam:PassRole'
+                Resource:
+                  - '*'
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService':
+                      - ec2.amazonaws.com
+                      - ec2.amazonaws.com.cn
+                      - ecs-tasks.amazonaws.com
+              - Effect: Allow
+                Action: 'iam:CreateServiceLinkedRole'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'iam:AWSServiceName':
+                      - spot.amazonaws.com
+                      - spotfleet.amazonaws.com
+                      - autoscaling.amazonaws.com
+                      - ecs.amazonaws.com
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateTags'
+                Resource:
+                  - '*'
+                Condition:
+                  StringEquals:
+                    'ec2:CreateAction': RunInstances
+      RoleName: !Join
+        - ''
+        - - !Ref computeEnvParameter
+          - !Sub "-BatchJobServiceRole-${AWS::StackName}"
+
+
+  batchroleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: 
+        - !Ref BatchJobServiceRole
+
+
+  ecsRoleInstance:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: "ecs-service-for-ec2"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeTags'
+                  - 'ecs:CreateCluster'
+                  - 'ecs:DeregisterContainerInstance'
+                  - 'ecs:DiscoverPollEndpoint'
+                  - 'ecs:Poll'
+                  - 'ecs:RegisterContainerInstance'
+                  - 'ecs:StartTelemetrySession'
+                  - 'ecs:UpdateContainerInstancesState'
+                  - 'ecs:Submit*'
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+      RoleName: !Join
+        - ''
+        - - !Ref computeEnvParameter
+          - !Sub "-ecsRoleInstance-${AWS::StackName}"
+  
+            
+  ecsroleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: 
+        - !Ref ecsRoleInstance
+
+
+#Troubleshooting AWS Batch ComputeEnvironment
+#Ref: https://aws.amazon.com/premiumsupport/knowledge-center/batch-invalid-compute-environment/
