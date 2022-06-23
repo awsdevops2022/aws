@@ -4,6 +4,7 @@ Description: >-
   To create AWS Batch Job with ECR, ECS instances, AutoScaling and IAM Policies.
   Note: The Docker Image must exist in ECR which can be built using CodeBuild.
 
+
 Parameters:
   computeEnvParameter:
     Description: The name of the compute env
