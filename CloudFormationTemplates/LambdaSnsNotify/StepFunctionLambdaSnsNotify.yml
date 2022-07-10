@@ -81,7 +81,7 @@ Resources:
       FunctionName: CfnLambdaSnsNotify
       Handler: index.handler
       Runtime: nodejs12.x
-      Role: arn:aws:iam::819825051806:role/LambdaSnsNotify
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/LambdaSnsNotify'
       Timeout:  60 #in seconds
       TracingConfig:
         Mode: Active
@@ -128,30 +128,52 @@ Resources:
         !Sub 
           - |-
             {
-              "Comment": "A Lambda invoke to send SNS mobile notification example",
-              "StartAt": "LambdaSnsNotify",
+              "Comment": "A description of my state machine",
+              "StartAt": "Batch SubmitJob",
               "States": {
-                "LambdaSnsNotify": {
+                "Batch SubmitJob": {
                   "Type": "Task",
-                  "Resource": "${lambdaArn}",
+                  "Resource": "arn:aws:states:::batch:submitJob",
                   "Parameters": {
-                    "TopicArn": "${CreateSnsTopic}",
-                    "Message.$": "$.input.message"
+                    "JobName.$": "$.Input.JobName",
+                    "JobDefinition": "${BatchJobDefinitionArn}",
+                    "JobQueue": "${MyJobQueue}",
+                    "ContainerOverrides": {
+                      "ResourceRequirements": [
+                        {
+                          "Type.$": "$.Input.Type",
+                          "Value.$": "$.Input.Value"
+                        }
+                      ]
+                    }
                   },
+                  "ResultPath": "$.Result",
+                  "TimeoutSeconds": 300,
+                  "Retry": [
+                    {
+                      "ErrorEquals": [
+                        "States.ALL"
+                      ],
+                      "BackoffRate": 1,
+                      "IntervalSeconds": 30,
+                      "MaxAttempts": 2
+                    }
+                  ],
                   "Catch": [
                     {
                       "ErrorEquals": [
                         "States.ALL"
                       ],
+                      "ResultPath": "$.Errors",
                       "Next": "fallback"
                     }
                   ],
                   "End": true
                 },
                 "fallback": {
-                  "Type": "Pass",
-                  "Result": "Failed to Create",
-                  "End": true
+                    "Type": "Pass",
+                    "Result": "Failed",
+                    "End": true
                 }
               }
             }
