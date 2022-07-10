@@ -134,7 +134,7 @@ Resources:
         #ExecutionRoleArn:
         #FargatePlatformConfiguration: 
           #FargatePlatformConfiguration
-        Image: '819825051806.dkr.ecr.ap-south-1.amazonaws.com/base-images:latest'
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/base-images:latest'
         #JobRoleArn: 
         #LinuxParameters: 
           #LinuxParameters
@@ -143,7 +143,7 @@ Resources:
         MountPoints: 
          - ContainerPath: "/tmp"
            ReadOnly: false
-           SourceVolume: "/var"
+           SourceVolume: "/var/SomeVolume"
         Volumes:
           - Host:
               SourcePath: /var
