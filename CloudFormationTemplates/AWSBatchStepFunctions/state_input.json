@@ -1,0 +1,7 @@
+{
+    "Input": {
+        "JobName": "DockerBatchJob"
+    },
+    "Type": "MEMORY",
+    "Value": "400"
+}
