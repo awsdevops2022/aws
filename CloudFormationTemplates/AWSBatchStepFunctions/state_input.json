@@ -3,5 +3,5 @@
         "JobName": "DockerBatchJob"
     },
     "Type": "MEMORY",
-    "Value": "400"
+    "Value": "512" 
 }
