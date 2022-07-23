@@ -1,2 +1,6 @@
-FROM python:3.10.5-alpine3.15
-RUN pip install awscli 
+FROM ubuntu:18.04
+RUN apt-get upgrade -y \
+    && apt-get update -y \
+    && apt-get install awscli \
+    && echo "awscli --version"
+

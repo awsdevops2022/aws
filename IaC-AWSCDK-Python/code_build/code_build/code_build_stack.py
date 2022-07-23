@@ -66,6 +66,7 @@ class CodeBuildStack(Stack):
         )
 
         build_environment = codebuild.BuildEnvironment(
+            build_image="LinuxBuildImage.STANDARD_4_0",
             compute_type=codebuild.ComputeType.SMALL,
             environment_variables={
                 'ecr': codebuild.BuildEnvironmentVariable(value=ecr.Repository.repository_uri),
