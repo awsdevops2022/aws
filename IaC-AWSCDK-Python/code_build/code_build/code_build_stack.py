@@ -3,7 +3,6 @@ from os import access
 import queue
 from aws_cdk import (
     Duration,
-    DockerImage,
     SecretValue,
     Stack,
     aws_codebuild as codebuild,
@@ -19,6 +18,8 @@ from aws_cdk import (
 
 import aws_cdk
 from constructs import Construct
+from aws_cdk.aws_ecr_assets import DockerImageAsset
+
 
 class CodeBuildStack(Stack):
 
@@ -67,12 +68,11 @@ class CodeBuildStack(Stack):
 
         build_environment = codebuild.BuildEnvironment(
             build_image=codebuild.LinuxBuildImage.STANDARD_4_0,
-            compute_type=codebuild.ComputeType.SMALL,
+            compute_type=codebuild.ComputeType.MEDIUM,
             environment_variables={
                 'ecr': codebuild.BuildEnvironmentVariable(value=ecr.Repository.repository_uri),
                 'tag': codebuild.BuildEnvironmentVariable(value="cdk"),
-                'region': codebuild.BuildEnvironmentVariable(value=Aws.REGION),
-
+                'region': codebuild.BuildEnvironmentVariable(value=Aws.REGION)
             },
             privileged=True
         )

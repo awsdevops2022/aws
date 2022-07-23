@@ -1,30 +1,20 @@
 version: 0.2
 
 phases:
-  install:
-    #If you use the Ubuntu standard image 2.0 or later, you must specify runtime-versions.
-    #If you specify runtime-versions and use an image other than Ubuntu standard image 2.0, the build fails.
-    #runtime-versions:
-      # name: version
-      # name: version
-    # commands:
-    #   - echo "Enabling docker daemon..."
-    #   - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 --storage-driver=overlay&
-    #   - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
   pre_build:
     commands:
       - echo "Setting environment variables to tag image..."
       - echo "Logging into AWS ECR..."
-      - aws ecr get-login-password --region $region | docker login --username AWS --password-stdin $ecr
+      - aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${ecr}
       # - command
   build:
     commands:
       - echo "Build completed on `date`"
       - docker build -t ${tag}:latest -f IaC-AWSCDK-Python/code_build/dockerImage/Dockerfile .
-      - docker tag $tag:latest $ecr:$tag
+      - docker tag $tag:latest ${ecr}:${tag}
      #- command
   post_build:
     commands:
       - /bin/sh -c 'if [ $? -eq "0" ]; then echo "Build Successful on `date`"; else echo "Build failed"; fi'
       #- echo ""
-      - docker push $ecr
+      - docker push ${ecr}
