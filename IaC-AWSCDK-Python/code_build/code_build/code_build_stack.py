@@ -30,16 +30,16 @@ class CodeBuildStack(Stack):
 
         #role = iam.Role(self, "githubCredRole", assumed_by=iam.ServicePrincipal("codebuild.amazonaws.com"), description="Role created for codebuild to use secretmanager")
 
-        vpc = ec2.Vpc(self, "cdkVpc", cidr="192.0.0.0/16", enable_dns_hostnames=True, enable_dns_support=True, nat_gateways=0, availability_zones=["ap-south-1a"],
-                subnet_configuration=[ec2.SubnetConfiguration(name="cdk-public", subnet_type=ec2.SubnetType.PUBLIC, cidr_mask=24)])
+        # vpc = ec2.Vpc(self, "cdkVpc", cidr="192.0.0.0/16", enable_dns_hostnames=True, enable_dns_support=True, nat_gateways=0, availability_zones=["ap-south-1a"],
+        #         subnet_configuration=[ec2.SubnetConfiguration(name="cdk-public", subnet_type=ec2.SubnetType.PUBLIC, cidr_mask=24)])
 
-        securityGroup = ec2.SecurityGroup(self, "cdkSecurityGroup", vpc=vpc, description="cdk security group", security_group_name="cdk-instance-securitygroup")
+        # securityGroup = ec2.SecurityGroup(self, "cdkSecurityGroup", vpc=vpc, description="cdk security group", security_group_name="cdk-instance-securitygroup")
 
-        securityGroup_ingress = securityGroup.add_ingress_rule(
-            peer=ec2.Peer.any_ipv4(),
-            connection=ec2.Port.tcp(22),
-            description="allow SSH access from anywhere on port 22"
-        )
+        # securityGroup_ingress = securityGroup.add_ingress_rule(
+        #     peer=ec2.Peer.any_ipv4(),
+        #     connection=ec2.Port.tcp(22),
+        #     description="allow SSH access from anywhere on port 22"
+        # )
 
         
         elastic_container_registry = ecr.Repository(
@@ -66,7 +66,7 @@ class CodeBuildStack(Stack):
         )
 
         build_environment = codebuild.BuildEnvironment(
-            build_image="LinuxBuildImage.STANDARD_4_0",
+            build_image=codebuild.LinuxBuildImage.STANDARD_4_0,
             compute_type=codebuild.ComputeType.SMALL,
             environment_variables={
                 'ecr': codebuild.BuildEnvironmentVariable(value=ecr.Repository.repository_uri),
@@ -88,8 +88,8 @@ class CodeBuildStack(Stack):
                     log_group=logs.LogGroup(self, "cdkLogGroup")
                 )
             ),
-            security_groups=[securityGroup],
-            vpc=vpc,
+            # security_groups=[securityGroup],
+            # vpc=vpc,
             queued_timeout=aws_cdk.Duration.minutes(6),
             timeout=aws_cdk.Duration.minutes(6)
         )
