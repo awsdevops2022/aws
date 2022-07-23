@@ -87,8 +87,8 @@ class CodeBuildStack(Stack):
                     log_group=logs.LogGroup(self, "cdkLogGroup")
                 )
             ),
-            # security_groups=[securityGroup],
-            # vpc=vpc,
+            security_groups=[securityGroup],
+            vpc=vpc,
             queued_timeout=aws_cdk.Duration.minutes(15),
             timeout=aws_cdk.Duration.minutes(15)
         )
