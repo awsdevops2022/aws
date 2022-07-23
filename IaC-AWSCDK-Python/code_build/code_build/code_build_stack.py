@@ -37,7 +37,7 @@ class CodeBuildStack(Stack):
 
         securityGroup_ingress = securityGroup.add_ingress_rule(
             peer=ec2.Peer.any_ipv4(),
-            connection=ec2.Port.tcp_range(22,500),
+            connection=ec2.Port.all_traffic(),
             description="allow SSH access from anywhere on port 22"
         )
 
@@ -90,6 +90,6 @@ class CodeBuildStack(Stack):
             ),
             security_groups=[securityGroup],
             vpc=vpc,
-            queued_timeout=aws_cdk.Duration.minutes(6),
-            timeout=aws_cdk.Duration.minutes(6)
+            queued_timeout=aws_cdk.Duration.minutes(15),
+            timeout=aws_cdk.Duration.minutes(15)
         )
