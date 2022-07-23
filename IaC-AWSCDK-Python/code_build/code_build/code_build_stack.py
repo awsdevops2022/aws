@@ -1,5 +1,6 @@
 import json
 from os import access
+import queue
 from aws_cdk import (
     Duration,
     DockerImage,
@@ -68,7 +69,9 @@ class CodeBuildStack(Stack):
             compute_type=codebuild.ComputeType.SMALL,
             environment_variables={
                 'ecr': codebuild.BuildEnvironmentVariable(value=ecr.Repository.repository_uri),
-                'tag': codebuild.BuildEnvironmentVariable(value="cdk")
+                'tag': codebuild.BuildEnvironmentVariable(value="cdk"),
+                'region': codebuild.BuildEnvironmentVariable(value=Aws.REGION),
+
             },
             privileged=True
         )
@@ -86,5 +89,6 @@ class CodeBuildStack(Stack):
             ),
             security_groups=[securityGroup],
             vpc=vpc,
-            timeout=aws_cdk.Duration.minutes(5),
+            queued_timeout=aws_cdk.Duration.minutes(6),
+            timeout=aws_cdk.Duration.minutes(6)
         )
