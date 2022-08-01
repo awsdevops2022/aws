@@ -5,7 +5,8 @@ from aws_cdk import (
     CfnOutput,
     aws_ec2 as ec2,
     aws_batch_alpha as batch,
-    aws_ecs as ecs
+    aws_ecs as ecs,
+    Tags
 )
 from constructs import Construct
 
@@ -22,9 +23,17 @@ class BatchStack(Stack):
 
         vpc = ec2.Vpc(self, "cdkBatchVpc", cidr=self.cidr_range, enable_dns_hostnames=True, enable_dns_support=True, nat_gateways=0, availability_zones=["ap-south-1a", "ap-south-1b"],
                 subnet_configuration=[ec2.SubnetConfiguration(name=f"{props['name']}-public", subnet_type=ec2.SubnetType.PUBLIC, cidr_mask=24)])
-     
+
+
+        Tags.of(vpc).add("Environment", "Dev")
+        Tags.of(vpc).add("Owner", "saikrishna")
+
 
         securityGroup = ec2.SecurityGroup(self, "cdkSecurityGroup", vpc=vpc, description="cdk batch security group", security_group_name=f"{props['name']}-security")
+
+        Tags.of(securityGroup).add("Environment", "Dev")
+        Tags.of(securityGroup).add("Owner", "saikrishna")
+
 
         securityGroup_ingress = securityGroup.add_ingress_rule(
             peer=ec2.Peer.any_ipv4(),
@@ -52,6 +61,9 @@ class BatchStack(Stack):
             retry_attempts=1,
         )
 
+        Tags.of(batch_job_def).add("Environment", "Dev")
+        Tags.of(batch_job_def).add("Owner", "saikrishna")
+
 
         #compute Environment
 
@@ -66,6 +78,9 @@ class BatchStack(Stack):
             )
         )
         
+        Tags.of(batch_env).add("Environment", "Dev")
+        Tags.of(batch_env).add("Owner", "saikrishna")
+
         #job queue
 
         batch_queue = batch.JobQueue(
@@ -80,6 +95,9 @@ class BatchStack(Stack):
             priority=1
         )
         
+        Tags.of(batch_queue).add("Environment", "Dev")
+        Tags.of(batch_queue).add("Owner", "saikrishna")
+
 
         #removal policy of job definition after deletion
 
