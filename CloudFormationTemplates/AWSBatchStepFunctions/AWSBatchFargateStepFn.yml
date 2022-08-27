@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 
 
 Description: >-
-  AWS StepFunctions and AWS Batch, ECS with Fargate
+  AWS StepFunctions and AWS Batch, ECS with Fargate, Databrew API
 
 
 Parameters:
@@ -170,15 +170,23 @@ Resources:
           - |-          
             {
               "Comment": "A description of my state machine",
-              "StartAt": "Batch SubmitJob",
+              "StartAt": "Glue StartJobRun",
               "States": {
+                "Glue StartJobRun": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::glue:startJobRun",
+                  "Parameters": {
+                    "JobName": "myJobName"
+                  },
+                  "Next": "Batch SubmitJob"
+                },
                 "Batch SubmitJob": {
                   "Type": "Task",
                   "Resource": "arn:aws:states:::batch:submitJob",
                   "Parameters": {
                     "JobName.$": "$.Input.JobName",
-                    "JobDefinition": "${BatchJobDefinitionArn}",
-                    "JobQueue": "${MyJobQueue}",
+                    "JobDefinition": "arn:aws:batch:ap-south-1:819825051806:job-definition/StepFnbatchJob:21",
+                    "JobQueue": "arn:aws:batch:ap-south-1:819825051806:job-queue/Batch-stack-glue-test",
                     "ContainerOverrides": {
                       "ResourceRequirements": [
                         {
