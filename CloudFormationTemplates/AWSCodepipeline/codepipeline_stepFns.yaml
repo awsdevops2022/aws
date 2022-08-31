@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 
 
 Description: >-
-  CodePipeline to trigger AWS StepFunctions, AWS Batch, ECS with Fargate, S3
+  CodePipeline with CodeBuild and triggering AWS StepFunctions, AWS Batch, ECS with Fargate, S3
 
 
 Parameters:
@@ -32,7 +32,21 @@ Parameters:
     Default: "StepFnbatchJob"
 
 
+  ImageRepoName:
+    Description: The image name 
+    Type: String
+    Default: sample-py-image
+
+
+  ImageTag:
+    Description: The tag of the image
+    Type: String
+    Default: latest
+
+
+
 Resources:
+
   batchVPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -105,7 +119,7 @@ Resources:
         ExecutionRoleArn: !GetAtt ecsRoleInstance.Arn
         FargatePlatformConfiguration: 
           PlatformVersion: LATEST
-        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/base-images:latest'
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepoName}:${ImageTag}'
         #JobRoleArn:
         #LinuxParameters:
           #LinuxParameters
@@ -121,7 +135,7 @@ Resources:
         #     Name: SomeVolume
         #NetworkConfiguration:
           #NetworkConfiguration
-        Privileged: false
+        Privileged: True
         ReadonlyRootFilesystem: false
         ResourceRequirements:
           - Type: MEMORY
@@ -237,6 +251,68 @@ Resources:
       Properties:
         AccessControl: Private 
         BucketName: code-pipeline-batch-stepfn #Choose unique name and lower case only
+
+
+#CodeBuild 
+
+  CodeBuildSourceCredential:
+    Type: 'AWS::CodeBuild::SourceCredential'
+    Properties:
+      Token: '{{resolve:secretsmanager:awsdevopsAccCreds:SecretString:Token}}'
+      ServerType: GITHUB
+      AuthType: PERSONAL_ACCESS_TOKEN
+
+
+  CreateImageBuild:
+    Type: AWS::CodeBuild::Project
+    Properties: 
+      Artifacts: 
+        Type: CODEPIPELINE
+      Description: Builds docker image
+      Environment: 
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: 
+          - Name: "AWS_DEFAULT_REGION"
+            Value: !Sub "${AWS::Region}"
+          - Name: "AWS_ACCOUNT_ID"
+            Value: !Sub "${AWS::AccountId}"
+        Image: aws/codebuild/standard:4.0
+        PrivilegedMode: True
+        Type: LINUX_CONTAINER
+      Name: DockerBuildImage
+      QueuedTimeoutInMinutes: 5
+      ResourceAccessRole: arn:aws:iam::819825051806:role/service-role/codebuild-SampleDockerProject-service-role
+      ServiceRole: arn:aws:iam::819825051806:role/service-role/codebuild-SampleDockerProject-service-role
+      Source: 
+        BuildSpec: AWSCodepipeline/buildspec.yml
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 8
+      Triggers: 
+        BuildType: BUILD
+        FilterGroups: 
+          - - 
+              Pattern: ^refs/heads/development
+              Type: HEAD_REF
+            -
+              Pattern: PUSH, PULL_REQUEST_CREATED
+              Type: EVENT
+        Webhook: True
+
+  CreateWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties: 
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration: 
+        SecretToken: '{{resolve:secretsmanager:awsdevopsAccCreds:SecretString:Token}}'
+      Filters: 
+        - JsonPath: "$.ref"
+          MatchEquals: refs/heads/development
+      Name: MyWebhook
+      RegisterWithThirdParty: True
+      TargetAction: codesource
+      TargetPipeline: !Ref CodepipelineStepFn
+      TargetPipelineVersion: !GetAtt CodepipelineStepFn.Version
+
         
 
 #Codepipeline
@@ -268,8 +344,30 @@ Resources:
                 FullRepositoryId: awsdevops2022/aws
                 BranchName: development
                 OutputArtifactFormat: "CODE_ZIP"
-              Name: GithubSource
-          
+              Name: codesource
+              RoleArn: !GetAtt CodepipelineStepFnExecRole.Arn
+
+        - 
+          Name: ImageBuild
+          Actions: 
+            - 
+              ActionTypeId: 
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              OutputArtifacts:
+                - 
+                  Name: codeBuildArtifact
+              RunOrder: 1
+              Name: DockerimageBuild
+              Configuration:
+                ProjectName: !Ref CreateImageBuild
+                PrimarySource: AWSCodepipeline
+              RoleArn: !GetAtt CodepipelineStepFnExecRole.Arn
+              InputArtifacts:
+                - Name: AWSCodepipeline
+         
         - 
           Name: CodeStep
           Actions:
@@ -299,7 +397,7 @@ Resources:
 
 #IAM Roles and Policies
 #ServiceRoleForBatch
-#Reference: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-iam-role.html#aws-resource-iam-role--examples
+#Reference: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-re-iam-role.html#aws-resource-iam-role--examples
 
   BatchJobServiceRole:
     Type: AWS::IAM::Role
