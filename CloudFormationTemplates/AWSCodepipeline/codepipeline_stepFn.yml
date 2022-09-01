@@ -7,6 +7,16 @@ Description: >-
 
 Parameters:
 
+  GithubUrl:
+    Description: The url of the repo
+    Type: String
+    Default: "https://github.com/awsdevops2022/aws.git"
+
+  GithubRepo:
+    Description: The repository name
+    Type: String
+    Default: aws
+
   computeEnvParameter:
     Description: The name of the compute env
     Type: String
@@ -43,7 +53,6 @@ Parameters:
     Description: The tag of the image
     Type: String
     Default: latest
-
 
 
 Resources:
@@ -113,10 +122,6 @@ Resources:
     Type: AWS::Batch::JobDefinition
     Properties:
       ContainerProperties:
-        #Command:
-          #- String
-        #Environment:
-          #- Environment
         ExecutionRoleArn: !GetAtt ecsRoleInstance.Arn
         FargatePlatformConfiguration: 
           PlatformVersion: LATEST
@@ -128,9 +133,6 @@ Resources:
             Value: 1024 #in MiB
           - Type: VCPU
             Value: 0.5
-        #Secrets:
-          #- Secret
-        #User: String
       JobDefinitionName: !Ref BatchJobName
       #Parameters: Json
       PlatformCapabilities:
@@ -151,7 +153,6 @@ Resources:
           Order: 1
       JobQueueName: !Sub "Batch-${AWS::StackName}"
       Priority: 1
-      #SchedulingPolicyArn: !GetAtt FairSharePolicy.Arn
       State: ENABLED
       #Tags:
        #Key : Value
@@ -275,20 +276,20 @@ Resources:
 
 
 
-  # CreateWebhook:
-  #   Type: AWS::CodePipeline::Webhook
-  #   Properties: 
-  #     Authentication: UNAUTHENTICATED
-  #     AuthenticationConfiguration: 
-  #       SecretToken: '{{resolve:secretsmanager:WebhookSecret:SecretString:Token}}'
-  #     Filters: 
-  #       - JsonPath: "$.ref"
-  #         MatchEquals: refs/heads/{BranchName}
-  #     Name: MyWebhook
-  #     RegisterWithThirdParty: True
-  #     TargetAction: codesource
-  #     TargetPipeline: !Ref CodepipelineStepFn
-  #     TargetPipelineVersion: !GetAtt CodepipelineStepFn.Version
+  CreateWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties: 
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration: 
+        SecretToken: '{{resolve:secretsmanager:WebhookSecret:SecretString:Token}}'
+      Filters: 
+        - JsonPath: "$.ref"
+          MatchEquals: refs/heads/{Branch}
+      Name: MyWebhook
+      RegisterWithThirdParty: true
+      TargetAction: Source
+      TargetPipeline: !Ref CodepipelineStepFn
+      TargetPipelineVersion: !GetAtt CodepipelineStepFn.Version
 
         
 
@@ -309,20 +310,21 @@ Resources:
             - 
               ActionTypeId:
                 Category: Source
-                Owner: AWS
+                Owner: ThirdParty
                 Version: '1'
-                Provider: CodeStarSourceConnection
+                Provider: GitHub #CodeStarSourceConnection
               OutputArtifacts:
                 - 
                   Name: codePipelineStepfnArtifact
               RunOrder: 1
               Configuration:
-                ConnectionArn: arn:aws:codestar-connections:ap-south-1:819825051806:connection/94a68262-9c00-492d-b3dd-e5ab65d91124
-                FullRepositoryId: awsdevops2022/aws
-                BranchName: development
-                OutputArtifactFormat: "CODE_ZIP"
-              Name: codesource
-              # RoleArn: !GetAtt CodepipelineStepFnExecRole.Arn
+                Owner: krishnna29
+                Repo: !Ref GithubRepo
+                Branch: development
+                OAuthToken: '{{resolve:secretsmanager:awsdevopsAccCreds:SecretString:Token}}'
+                PollForSourceChanges: false
+              Name: Source
+
 
         - 
           Name: ImageBuild
@@ -340,7 +342,7 @@ Resources:
               Name: DockerimageBuild
               Configuration:
                 ProjectName: !Ref CreateImageBuild
-              # RoleArn: !GetAtt CodepipelineStepFnExecRole.Arn
+              # RoleArn: !GetAtt CodeBuildRole.Arn
               InputArtifacts:
                 - Name: codePipelineStepfnArtifact
          
@@ -713,8 +715,7 @@ Resources:
   CodeBuildRole:
       Type: "AWS::IAM::Role"
       Properties:
-        RoleName:
-          Fn::Sub: CodeBuildRole-${AWS::StackName}
+        RoleName: CodeBuildRole
         AssumeRolePolicyDocument:
           Version: '2012-10-17'
           Statement: 
@@ -724,11 +725,49 @@ Resources:
                   - "codebuild.amazonaws.com"
               Action: 
                 - 'sts:AssumeRole'
-        Path: /
         ManagedPolicyArns:
           - 
             arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
-        
+        Path: /service-role/
+        Policies:
+          - PolicyName: "CodeBuildAccessPolicy"
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Resource:
+                    -  Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                - Effect: Allow
+                  Resource:  
+                    - Fn::Sub: arn:aws:s3:::codepipeline-${AWS::Region}-*
+                  Action:
+                    - s3:PutObject
+                    - s3:GetObject
+                    - s3:GetObjectVersion
+                    - s3:GetBucketAcl
+                    - s3:GetBucketLocation
+                - Effect: Allow
+                  Action:
+                    - codebuild:CreateReportGroup
+                    - codebuild:CreateReport
+                    - codebuild:UpdateReport
+                    - codebuild:BatchPutTestCases
+                    - codebuild:BatchPutCodeCoverages
+                  Resource:
+                    - Fn::Sub: arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/SimpleDockerBaseImageProject-*
+                - Action:
+                    - 'ecr:BatchCheckLayerAvailability'
+                    - 'ecr:CompleteLayerUpload'
+                    - 'ecr:GetAuthorizationToken'
+                    - 'ecr:InitiateLayerUpload'
+                    - 'ecr:PutImage'
+                    - 'ecr:UploadLayerPart'
+                  Resource: '*'
+                  Effect: Allow
 
 
 #Troubleshooting AWS Batch ComputeEnvironment
