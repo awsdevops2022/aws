@@ -2,6 +2,8 @@
 
 The repository holds infrastructure creation of varied AWS Resources with examples for reference.
 
+For Terraform examples - `https://github.com/awsdevops2022/Terraform`
+
 
 ## :warning: Important: AWS SDK boto3 setup 
  * `Install latest python3`
