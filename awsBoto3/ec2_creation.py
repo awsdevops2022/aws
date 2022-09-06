@@ -156,7 +156,7 @@ def main():
             RouteTableId = route_table['RouteTable']['RouteTableId']
         )
     except ClientError:
-        logger.exception('Failed to route')
+        logger.exception('Failed to create route')
         raise
 
 
@@ -178,7 +178,7 @@ def main():
             ]
         )
     except ClientError:
-        logger.exception('Failed to route')
+        logger.exception('Failed to security group')
         raise
     
 
@@ -227,7 +227,7 @@ def main():
             ],
         )
     except ClientError:
-        logger.exception('Failed to segurity group rules')
+        logger.exception('Failed to create security group rules')
         raise
 
 
@@ -272,5 +272,5 @@ def main():
         
 
 if __name__ == '__main__':
-    logger.info("Creating a custom vpc and subnet...")
+    logger.info("Creating resources...")
     main()
