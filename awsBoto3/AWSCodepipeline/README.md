@@ -21,7 +21,7 @@
  * `cb_eventbridge_stepfunctions_batch.yml`
  * `create_lambda.yml` 
 
- ### Useful links. Source: AWS. All rights reserved.
+ ### Useful links. 
 
  * `https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html`
  * `https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/stepfunctions.html#SFN.Client.start_execution`
@@ -31,3 +31,5 @@
  * `https://docs.aws.amazon.com/batch/latest/userguide/what-is-batch.html`
  * `https://docs.aws.amazon.com/step-functions/latest/dg/welcome.html`
  * `https://docs.aws.amazon.com/lambda/latest/dg/welcome.html`
+
+Source - AWS. All rights reserved.
