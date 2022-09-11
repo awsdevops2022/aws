@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+
+Description: >-
+  "To create lambda function triggering Step Functions"
+
+
+Resources:
+
+  CreateLambda:
+    Type: AWS::Lambda::Function
+    Properties: 
+      Code: 
+        ZipFile: |
+                import json
+                import boto3
+                import logging
+                from botocore.exceptions import ClientError
+
+
+                logger = logging.getLogger(__name__)
+
+
+                logging.basicConfig(format = '%(levelname)s %(asctime)s %(message)s', level=logging.INFO)
+
+                client = boto3.client('stepfunctions', region_name = 'ap-south-1')
+
+                props = {
+                    "name": "ToTriggerStepFn",
+                    "statemachinearn": f"arn:aws:states:ap-south-1:819825051806:stateMachine:StepFnBatchJob"
+                }
+
+                jsoninput = {
+                    "BatchJob": {
+                        "JobName": "DockerBatchJob",
+                    },
+                    "Type": "MEMORY",
+                    "Value": "2048"
+                }
+
+                def lambda_handler(event, context):
+                    # TODO implement
+
+                    print(f"{props['name']} is starting execution...")
+
+                    """ Makes and API call to trigger StepFunction """
+                    try:
+                        logger.info('Starting...')
+                        sf = client.start_execution(
+                            stateMachineArn = f"{props['statemachinearn']}",
+                            # name = f"{props['name']}",
+                            input = json.dumps(jsoninput, indent=4)
+                        )
+                    except ClientError:
+                        logger.exception(f"{props['name']} failed to start execution")
+                        raise
+                    else:
+                        return {
+                            'statusCode': 200,
+                            'body': sf['executionArn']
+                        }
+                        
+      Description: To trigger StepFunctions
+      FunctionName: ToTriggerStepFn
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.9
+      Handler: index.lambda_handler
+
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Description: Lambda execution role to invoke step functions
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess
+      Policies:
+        -
+         PolicyName: LambdaCreateLogs
+         PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'logs:CreateLogGroup'
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: '*'
+      RoleName: LambdaInvokeStepFn

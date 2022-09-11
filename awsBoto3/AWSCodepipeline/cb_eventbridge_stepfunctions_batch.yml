@@ -1,0 +1,773 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+
+Description: >-
+  CodePipeline with CodeBuild, EventBridge to trigger AWS StepFunctions, AWS Batch, ECS with Fargate, S3.
+
+
+Parameters:
+
+
+  GithubRepo:
+    Description: The repository name
+    Type: String
+    Default: saikrishnna29/Codepipeline  
+
+  CodeStarArn:
+    Description: The connection arn
+    Type: String
+    Default: arn:aws:codestar-connections:ap-south-1:819825051806:connection/c72c931a-b339-4198-aaf9-937c01c7c8e8
+
+  computeEnvParameter:
+    Description: The name of the compute env
+    Type: String
+    Default: computeEnv
+
+  listofAZs:
+    Description: Select the AZ
+    Type: String
+    Default: "ap-south-1a"
+    AllowedValues:
+      - ap-south-1a
+      - ap-south-1b
+      - us-east-2a
+
+  
+  BatchJobName:
+    Description: Give Batch job name
+    Type: String
+    Default: "StepFnbatchJob"
+
+
+  ImageRepoName:
+    Description: The image name 
+    Type: String
+    Default: sample-py-image
+
+
+  ImageTag:
+    Description: The tag of the image
+    Type: String
+    Default: latest
+
+
+Resources:
+
+  batchVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "batchVPC-${AWS::StackName}"
+
+
+  batchSubnetPublic:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref listofAZs
+      CidrBlock: "10.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: batchSubnetPublic1
+      VpcId: !Ref batchVPC
+
+
+  batchSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: "AWSBatch security group"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '8080'
+          ToPort: '8080'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref batchVPC
+
+
+
+#CodeBuild 
+
+  CodeBuildSourceCredential:
+    Type: 'AWS::CodeBuild::SourceCredential'
+    Properties:
+      Token: '{{resolve:secretsmanager:githubCred}}'
+      ServerType: GITHUB
+      AuthType: PERSONAL_ACCESS_TOKEN
+
+
+  CreateImageBuild:
+    Type: AWS::CodeBuild::Project
+    Properties: 
+      Artifacts: 
+        Type: CODEPIPELINE
+      Description: Builds docker image
+      Environment: 
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: 
+          - Name: "AWS_DEFAULT_REGION"
+            Value: !Sub "${AWS::Region}"
+          - Name: "AWS_ACCOUNT_ID"
+            Value: !Sub "${AWS::AccountId}"
+        Image: aws/codebuild/standard:4.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      Name: DockerBuildImage
+      QueuedTimeoutInMinutes: 5
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Source: 
+        BuildSpec: AWSCodepipeline/buildspec.yml
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 8 
+
+#AWS Batch
+#reference : https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_Batch.html
+
+  myComputeEnv:
+    Type: 'AWS::Batch::ComputeEnvironment'
+    Properties:
+      ComputeEnvironmentName: !Join
+        - ''
+        - - !Ref computeEnvParameter
+          - !Sub "-${AWS::StackName}"
+      ComputeResources:
+        MaxvCpus: 36    #make sure the number of vCPUs match the instance type in the parameters. Ref-https://aws.amazon.com/ec2/instance-types/
+        SecurityGroupIds:
+          - !GetAtt batchSecurityGroup.GroupId
+        Subnets:
+          - !Ref batchSubnetPublic
+        Type: FARGATE
+      State: ENABLED
+      Type: MANAGED
+      ServiceRole: !GetAtt BatchJobServiceRole.Arn
+  
+
+  BatchJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      ContainerProperties:
+        ExecutionRoleArn: !GetAtt ecsRoleInstance.Arn
+        FargatePlatformConfiguration: 
+          PlatformVersion: LATEST
+        Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepoName}:${ImageTag}'
+        Privileged: false
+        ReadonlyRootFilesystem: false
+        ResourceRequirements:
+          - Type: MEMORY
+            Value: 2048 #in MiB
+          - Type: VCPU
+            Value: 1
+      JobDefinitionName: !Ref BatchJobName
+      #Parameters: Json
+      PlatformCapabilities:
+       - FARGATE
+      #PropagateTags: Boolean
+      #RetryStrategy:
+      Timeout:
+        AttemptDurationSeconds: 120
+      Type: container
+    DependsOn: myComputeEnv
+
+  
+  MyJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      ComputeEnvironmentOrder:
+        - ComputeEnvironment: !Ref myComputeEnv
+          Order: 1
+      JobQueueName: !Sub "Batch-${AWS::StackName}"
+      Priority: 1
+      State: ENABLED
+      #Tags:
+       #Key : Value
+    DependsOn: myComputeEnv
+  
+
+  #StepFn
+
+  StepFnBatchOrchestration:
+    Type: AWS::StepFunctions::StateMachine
+    Properties: 
+      DefinitionString: |-
+            {
+              "Comment": "A description of my state machine",
+              "StartAt": "Batch SubmitJob",
+              "States": {
+                "Batch SubmitJob": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::batch:submitJob",
+                  "Parameters": {
+                    "JobName.$": "$.BatchJob.JobName",
+                    "JobDefinition": "${BatchJobDefinitionArn}",
+                    "JobQueue": "${MyJobQueue}",
+                    "ContainerOverrides": {
+                      "ResourceRequirements": [
+                        {
+                          "Type.$": "$.Type",
+                          "Value.$": "$.Value"
+                        }
+                      ]
+                    }
+                  },
+                  "End": true,
+                  "Catch": [
+                    {
+                      "ErrorEquals": [
+                        "States.ALL"
+                      ],
+                      "Next": "fallback"
+                    }
+                  ],
+                  "TimeoutSeconds": 180,
+                  "Retry": [
+                    {
+                      "ErrorEquals": [
+                        "States.ALL"
+                      ],
+                      "BackoffRate": 1,
+                      "IntervalSeconds": 30,
+                      "MaxAttempts": 2
+                    }
+                  ]
+                },
+                "fallback": {
+                  "Type": "Pass",
+                  "Result": "failed !",
+                  "End": true
+                }
+              }
+            }
+      DefinitionSubstitutions:
+        MyJobQueue: !Ref MyJobQueue
+        BatchJobDefinitionArn: !Ref BatchJobDefinition
+      RoleArn: !GetAtt StepFnExecutionRole.Arn
+      StateMachineName: "StepFnBatchJob"
+      StateMachineType: STANDARD  
+      Tags:
+        - Key: Name
+          Value: "StepFnJob-batch"
+    DependsOn:  
+      - BatchJobDefinition
+      - MyJobQueue
+
+
+#S3
+
+  CodepipelineStepFnS3Bucket:
+      Type: 'AWS::S3::Bucket'
+      DeletionPolicy: Delete
+      Properties:
+        AccessControl: Private 
+        BucketName: code-pipeline-batch-stepfn #Choose unique name and lower case only
+
+
+#Codepipeline
+
+
+  CodepipelineStepFn:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: TriggerStepFn
+      ArtifactStore: 
+        Location: !Ref CodepipelineStepFnS3Bucket
+        Type: S3
+      RoleArn: !GetAtt CodepipelineStepFnExecRole.Arn
+      Stages:
+        - 
+          Name: Source
+          Actions:
+            - 
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: '1'
+                Provider: CodeStarSourceConnection
+              OutputArtifacts:
+                - 
+                  Name: codePipelineStepfnArtifact
+              RunOrder: 1
+              Configuration:
+                ConnectionArn: !Ref CodeStarArn
+                FullRepositoryId: !Ref GithubRepo
+                BranchName: development
+                OutputArtifactFormat: 'CODE_ZIP'
+              Name: Source
+        - 
+          Name: BuildContainer
+          Actions:
+            - 
+              ActionTypeId: 
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              Configuration: 
+                ProjectName: CreateImageBuild
+              # RoleArn: !GetAtt CodeBuildRole.Arn
+              RunOrder: 1
+              Name: DockerImage
+              InputArtifacts:
+                - Name: codePipelineStepfnArtifact
+              OutputArtifacts: 
+                - 
+                  Name: CodepipelineStepFnS3Bucket
+
+
+#EventRule to trigger Step Functions
+
+  CreateEventRuleSf:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: "EventRule to trigger Step Functions"
+      # EventBusName: default will be used
+      EventPattern: 
+        source: 
+          - "aws.codepipeline"
+        detail-type:
+          - "CodePipeline Pipeline Execution State Change"
+        detail:
+          state:
+            - "SUCCEEDED"
+
+      Name: "TriggerStepFunctions"
+      RoleArn: !GetAtt CreatEventRuleStepFn.Arn
+      State: ENABLED
+      Targets: 
+        - Arn: !Ref StepFnBatchOrchestration
+          Id: "TargetStepFn"
+          RoleArn: !GetAtt CreatEventRuleStepFn.Arn
+          Input:  '{
+                      "BatchJob": {
+                        "JobName": "DockerBatchJob"
+                      },
+                      "Type": "MEMORY",
+                      "Value": "2048"
+                    }'
+          
+
+#IAM Roles and Policies
+#ServiceRoleForBatch
+#Reference: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-re-iam-role.html#aws-resource-iam-role--examples
+
+  CreatEventRuleStepFn:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Description: "EventRule to trigger Step Functions after codepipline is succeeded"
+      Path: /
+      Policies: 
+        - PolicyName: "EventRuleInvokeStepFn"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'states:StartExecution'
+                Resource:
+                  - !Ref StepFnBatchOrchestration
+      RoleName: "EventRuleToTrigger-StepFn"
+
+
+  CodeBuildRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+        RoleName: CodeBuildRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement: 
+            - Effect: Allow
+              Principal:
+                Service: 
+                  - "codebuild.amazonaws.com"
+              Action: 
+                - 'sts:AssumeRole'
+        ManagedPolicyArns:
+          - 
+            arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+        Path: /service-role/
+        Policies:
+          - PolicyName: "CodeBuildAccessPolicy"
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Resource:
+                    -  Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                - Effect: Allow
+                  Resource:  
+                    - Fn::Sub: arn:aws:s3:::codepipeline-${AWS::Region}-*
+                  Action:
+                    - s3:PutObject
+                    - s3:GetObject
+                    - s3:GetObjectVersion
+                    - s3:GetBucketAcl
+                    - s3:GetBucketLocation
+                - Effect: Allow
+                  Action:
+                    - codebuild:CreateReportGroup
+                    - codebuild:CreateReport
+                    - codebuild:UpdateReport
+                    - codebuild:BatchPutTestCases
+                    - codebuild:BatchPutCodeCoverages
+                  Resource:
+                    - Fn::Sub: arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/SimpleDockerBaseImageProject-*
+                - Action:
+                    - 'ecr:BatchCheckLayerAvailability'
+                    - 'ecr:CompleteLayerUpload'
+                    - 'ecr:GetAuthorizationToken'
+                    - 'ecr:InitiateLayerUpload'
+                    - 'ecr:PutImage'
+                    - 'ecr:UploadLayerPart'
+                  Resource: '*'
+                  Effect: Allow
+
+
+
+  BatchJobServiceRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - batch.amazonaws.com
+              Action:
+                - 'sts:AssumeRole'
+        Path: /
+        Description: Service role for AWS Batch
+        Policies:
+          - PolicyName: !Join
+              - ''
+              - - !Ref computeEnvParameter
+                - !Sub "-batchJobPolicy-${AWS::StackName}"
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'ec2:DescribeAccountAttributes'
+                    - 'ec2:DescribeInstances'
+                    - 'ec2:DescribeInstanceAttribute'
+                    - 'ec2:DescribeSubnets'
+                    - 'ec2:DescribeSecurityGroups'
+                    - 'ec2:DescribeKeyPairs'
+                    - 'ec2:DescribeImages'
+                    - 'ec2:DescribeImageAttribute'
+                    - 'ec2:DescribeInstanceStatus'
+                    - 'ec2:DescribeSpotInstanceRequests'
+                    - 'ec2:DescribeSpotFleetInstances'
+                    - 'ec2:DescribeSpotFleetRequests'
+                    - 'ec2:DescribeSpotPriceHistory'
+                    - 'ec2:DescribeVpcClassicLink'
+                    - 'ec2:DescribeLaunchTemplateVersions'
+                    - 'ec2:CreateLaunchTemplate'
+                    - 'ec2:DeleteLaunchTemplate'
+                    - 'ec2:RequestSpotFleet'
+                    - 'ec2:CancelSpotFleetRequests'
+                    - 'ec2:ModifySpotFleetRequest'
+                    - 'ec2:TerminateInstances'
+                    - 'ec2:RunInstances'
+                    - 'autoscaling:DescribeAccountLimits'
+                    - 'autoscaling:DescribeAutoScalingGroups'
+                    - 'autoscaling:DescribeLaunchConfigurations'
+                    - 'autoscaling:DescribeAutoScalingInstances'
+                    - 'autoscaling:CreateLaunchConfiguration'
+                    - 'autoscaling:CreateAutoScalingGroup'
+                    - 'autoscaling:UpdateAutoScalingGroup'
+                    - 'autoscaling:SetDesiredCapacity'
+                    - 'autoscaling:DeleteLaunchConfiguration'
+                    - 'autoscaling:DeleteAutoScalingGroup'
+                    - 'autoscaling:CreateOrUpdateTags'
+                    - 'autoscaling:SuspendProcesses'
+                    - 'autoscaling:PutNotificationConfiguration'
+                    - 'autoscaling:TerminateInstanceInAutoScalingGroup'
+                    - 'ecs:DescribeClusters'
+                    - 'ecs:DescribeContainerInstances'
+                    - 'ecs:DescribeTaskDefinition'
+                    - 'ecs:DescribeTasks'
+                    - 'ecs:ListAccountSettings'
+                    - 'ecs:ListClusters'
+                    - 'ecs:ListContainerInstances'
+                    - 'ecs:ListTaskDefinitionFamilies'
+                    - 'ecs:ListTaskDefinitions'
+                    - 'ecs:ListTasks'
+                    - 'ecs:CreateCluster'
+                    - 'ecs:DeleteCluster'
+                    - 'ecs:RegisterTaskDefinition'
+                    - 'ecs:DeregisterTaskDefinition'
+                    - 'ecs:RunTask'
+                    - 'ecs:StartTask'
+                    - 'ecs:StopTask'
+                    - 'ecs:UpdateContainerAgent'
+                    - 'ecs:DeregisterContainerInstance'
+                    - 'logs:CreateLogGroup'
+                    - 'logs:CreateLogStream'
+                    - 'logs:PutLogEvents'
+                    - 'logs:DescribeLogGroups'
+                    - 'iam:GetInstanceProfile'
+                    - 'iam:GetRole'
+                  Resource: '*'
+                - Effect: Allow
+                  Action: 'ecs:TagResource'
+                  Resource:
+                    - 'arn:aws:ecs:*:*:task/*_Batch_*'
+                - Effect: Allow
+                  Action: 'iam:PassRole'
+                  Resource:
+                    - '*'
+                  Condition:
+                    StringEquals:
+                      'iam:PassedToService':
+                        - ec2.amazonaws.com
+                        - ec2.amazonaws.com.cn
+                        - ecs-tasks.amazonaws.com
+                - Effect: Allow
+                  Action: 'iam:CreateServiceLinkedRole'
+                  Resource: '*'
+                  Condition:
+                    StringEquals:
+                      'iam:AWSServiceName':
+                        - spot.amazonaws.com
+                        - spotfleet.amazonaws.com
+                        - autoscaling.amazonaws.com
+                        - ecs.amazonaws.com
+                - Effect: Allow
+                  Action:
+                    - 'ec2:CreateTags'
+                  Resource:
+                    - '*'
+                  Condition:
+                    StringEquals:
+                      'ec2:CreateAction': RunInstances
+        RoleName: !Join
+          - ''
+          - - !Ref computeEnvParameter
+            - !Sub "-BatchJobServiceRole-${AWS::StackName}"
+
+
+  ecsRoleInstance:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      RoleName: !Join
+        - ''
+        - - !Ref computeEnvParameter
+          - !Sub "-ecsRoleInstance-${AWS::StackName}"
+
+
+  ecsroleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ecsRoleInstance
+        
+
+  #StepFnRole
+
+  StepFnExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: 
+                - states.amazonaws.com
+                - events.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Description: Step function execution role
+      Policies:
+        - PolicyName: StepFnExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow 
+                Action: 
+                  - "batch:SubmitJob"
+                  - "batch:DescribeJobs"
+                  - "batch:TerminateJob"
+                Resource: "*"
+              - Effect: Allow 
+                Action: 
+                  - "events:PutTargets"
+                  - "events:PutRule"
+                  - "events:DescribeRule"
+                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForBatchJobsRule"
+
+
+  CodepipelineStepFnExecRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: "/"
+      Description: Codepipeline Step Functions execution role
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodePipeline_FullAccess
+      Policies:
+        - 
+          PolicyName: CodepipelineExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - 'iam:PassRole'
+                Resource: '*'
+                Effect: Allow
+                Condition:
+                  StringEqualsIfExists:
+                    'iam:PassedToService':
+                      - cloudformation.amazonaws.com
+                      - elasticbeanstalk.amazonaws.com
+                      - ec2.amazonaws.com
+                      - ecs-tasks.amazonaws.com
+              - Action:
+                  - 'codecommit:CancelUploadArchive'
+                  - 'codecommit:GetBranch'
+                  - 'codecommit:GetCommit'
+                  - 'codecommit:GetRepository'
+                  - 'codecommit:GetUploadArchiveStatus'
+                  - 'codecommit:UploadArchive'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'codedeploy:CreateDeployment'
+                  - 'codedeploy:GetApplication'
+                  - 'codedeploy:GetApplicationRevision'
+                  - 'codedeploy:GetDeployment'
+                  - 'codedeploy:GetDeploymentConfig'
+                  - 'codedeploy:RegisterApplicationRevision'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'codestar-connections:UseConnection'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'elasticbeanstalk:*'
+                  - 'ec2:*'
+                  - 'elasticloadbalancing:*'
+                  - 'autoscaling:*'
+                  - 'cloudwatch:*'
+                  - 's3:*'
+                  - 'sns:*'
+                  - 'cloudformation:*'
+                  - 'rds:*'
+                  - 'sqs:*'
+                  - 'ecs:*'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'lambda:InvokeFunction'
+                  - 'lambda:ListFunctions'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'opsworks:CreateDeployment'
+                  - 'opsworks:DescribeApps'
+                  - 'opsworks:DescribeCommands'
+                  - 'opsworks:DescribeDeployments'
+                  - 'opsworks:DescribeInstances'
+                  - 'opsworks:DescribeStacks'
+                  - 'opsworks:UpdateApp'
+                  - 'opsworks:UpdateStack'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:DeleteStack'
+                  - 'cloudformation:DescribeStacks'
+                  - 'cloudformation:UpdateStack'
+                  - 'cloudformation:CreateChangeSet'
+                  - 'cloudformation:DeleteChangeSet'
+                  - 'cloudformation:DescribeChangeSet'
+                  - 'cloudformation:ExecuteChangeSet'
+                  - 'cloudformation:SetStackPolicy'
+                  - 'cloudformation:ValidateTemplate'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'codebuild:BatchGetBuilds'
+                  - 'codebuild:StartBuild'
+                  - 'codebuild:BatchGetBuildBatches'
+                  - 'codebuild:StartBuildBatch'
+                Resource: '*'
+                Effect: Allow
+              - Effect: Allow
+                Action:
+                  - 'devicefarm:ListProjects'
+                  - 'devicefarm:ListDevicePools'
+                  - 'devicefarm:GetRun'
+                  - 'devicefarm:GetUpload'
+                  - 'devicefarm:CreateUpload'
+                  - 'devicefarm:ScheduleRun'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'servicecatalog:ListProvisioningArtifacts'
+                  - 'servicecatalog:CreateProvisioningArtifact'
+                  - 'servicecatalog:DescribeProvisioningArtifact'
+                  - 'servicecatalog:DeleteProvisioningArtifact'
+                  - 'servicecatalog:UpdateProduct'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'cloudformation:ValidateTemplate'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'ecr:DescribeImages'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'states:DescribeExecution'
+                  - 'states:DescribeStateMachine'
+                  - 'states:StartExecution'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'appconfig:StartDeployment'
+                  - 'appconfig:StopDeployment'
+                  - 'appconfig:GetDeployment'
+                Resource: '*'
+
+#Troubleshooting AWS Batch ComputeEnvironment
+#Ref: https://aws.amazon.com/premiumsupport/knowledge-center/batch-invalid-compute-environment/
