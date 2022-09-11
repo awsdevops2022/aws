@@ -16,7 +16,7 @@
 
 ### :warning: Execution order of scripts
     The scripts must be executed/deployed in order as they have dependencies. 
-    Make sure `AWS boto3` is setup. Please see below links for reference - 
+    Make sure "AWS boto3" is setup. Please see below links for reference - 
 
  * `cb_eventbridge_stepfunctions_batch.yml`
  * `create_lambda.yml` 
