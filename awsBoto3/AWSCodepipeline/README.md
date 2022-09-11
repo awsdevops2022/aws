@@ -19,9 +19,7 @@
     Make sure `AWS boto3` is setup. Please see below links for reference - 
 
  * `cb_eventbridge_stepfunctions_batch.yml`
- * `Dockerfile`
- * `sample.py`
- * `create_lambda.yml`
+ * `create_lambda.yml` 
 
  ### Useful links. Source: AWS. All rights reserved.
 
