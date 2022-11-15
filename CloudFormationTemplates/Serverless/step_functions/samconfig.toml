@@ -1,0 +1,23 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "SF-test-sam"
+s3_bucket = "sdk-lambda-bkt"
+s3_prefix = "SF-test-sam"
+region = "ap-south-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+
+
+[dev]
+[dev.deploy.parameters]
+stack_name = "SF-test-sam-dev"
+s3_bucket = "sdk-lambda-bkt"
+s3_prefix = "SF-test-sam-dev"
+region = "ap-south-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+tags= "Environment=\"DEV\""

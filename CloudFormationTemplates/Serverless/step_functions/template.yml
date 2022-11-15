@@ -1,0 +1,13 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  TEST serverless
+
+Resources:
+  EcomStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachine/simple.asl.json
+      Name: b2905-Pass-Test-StateMachine
+      Type: STANDARD
+      Role: arn:aws:iam::819825051806:role/service-role/StepFunctions-HelloExample-role-9746a6a2

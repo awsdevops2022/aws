@@ -1,0 +1,17 @@
+{
+    "Comment": "A description of my state machine",
+    "StartAt": "Process Input",
+    "States": {
+      "Process Input": {
+        "Type": "Pass",
+        "End": true,
+        "Parameters": {
+          "Input": {
+            "Results": {},
+            "name.$": "$.name",
+            "Errors": {}
+          }
+        }
+      }
+    }
+  }
