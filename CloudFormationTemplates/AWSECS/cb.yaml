@@ -51,7 +51,7 @@ Resources:
       Name: MyCBTest
       ServiceRole: !GetAtt [ CodeBuildServiceRole, Arn ]
       Source: 
-          BuildSpec: "CloudFormationTemplates/AWSECS/buildspec.yml"
+          BuildSpec: "CloudFormationTemplates/AWSECS/buildspec.yaml"
           Location: !Ref GitHubUrl
           Type: GITHUB
       SourceVersion: "development"
