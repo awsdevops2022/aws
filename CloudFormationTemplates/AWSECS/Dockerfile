@@ -15,8 +15,7 @@ RUN apt-get update -y && apt-get install curl -y && \
     unzip awscliv2.zip && \
     ./aws/install && \
     apt-get install python3-pip -y &&\
-    mkdir -p ./src && \
-    echo $Region
+    mkdir -p ./src 
 
 WORKDIR /src
 COPY --from=Checkout aws/CloudFormationTemplates/AWSECS/example.py .
