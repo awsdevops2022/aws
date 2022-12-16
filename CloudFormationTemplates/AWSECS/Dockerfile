@@ -10,13 +10,13 @@ ENV Region=$Region_name
  
 
 
-RUN apt-get update -y && apt-get install curl && \
-    apt-get install unzip && \
+RUN apt-get update -y && apt-get install curl -y && \
+    apt-get install unzip -y && \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install && \
     aws --version && \
-    apt-get -y install python3-pip &&\
+    apt-get install python3-pip -y &&\
     pip3 --version && \
     echo ${Region}
 
