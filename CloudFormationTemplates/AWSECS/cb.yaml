@@ -51,14 +51,10 @@ Resources:
       Name: MyCBTest
       ServiceRole: !GetAtt [ CodeBuildServiceRole, Arn ]
       Source: 
-          Auth: 
-            SourceAuth
-          BuildSpec: buildspec.yml
+          BuildSpec: "CloudFormationTemplates/AWSECS/buildspec.yml"
           Location: !Ref GitHubUrl
           Type: GITHUB
       SourceVersion: "development"
-      Tags: 
-        - Tag
       TimeoutInMinutes: 5
       Triggers: 
         BuildType: BUILD
@@ -75,57 +71,57 @@ Resources:
 
 #IAM role for CodeBuild
 
-CodeBuildServiceRole:
-    Type: "AWS::IAM::Role"
-    Properties:
-      RoleName:
-        Fn::Sub: CodeBuildServiceRole-${AWS::StackName}
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement: 
-          - Effect: Allow
-            Principal:
-              Service: 
-                - "codebuild.amazonaws.com"
-            Action: 
-              - 'sts:AssumeRole'
-      Path: /service-role/
-      Policies:
-        - PolicyName: "CodeBuildAccessPolicy"
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Resource:
-                  -  Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-              - Effect: Allow
-                Resource:  
-                  - Fn::Sub: arn:aws:s3:::codepipeline-${AWS::Region}-*
-                Action:
-                  - s3:PutObject
-                  - s3:GetObject
-                  - s3:GetObjectVersion
-                  - s3:GetBucketAcl
-                  - s3:GetBucketLocation
-              - Effect: Allow
-                Action:
-                  - codebuild:CreateReportGroup
-                  - codebuild:CreateReport
-                  - codebuild:UpdateReport
-                  - codebuild:BatchPutTestCases
-                  - codebuild:BatchPutCodeCoverages
-                Resource:
-                  - Fn::Sub: arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/SimpleDockerBaseImageProject-*
-              - Action:
-                  - 'ecr:BatchCheckLayerAvailability'
-                  - 'ecr:CompleteLayerUpload'
-                  - 'ecr:GetAuthorizationToken'
-                  - 'ecr:InitiateLayerUpload'
-                  - 'ecr:PutImage'
-                  - 'ecr:UploadLayerPart'
-                Resource: '*'
-                Effect: Allow
+  CodeBuildServiceRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+        RoleName:
+          Fn::Sub: CodeBuildServiceRole-${AWS::StackName}
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement: 
+            - Effect: Allow
+              Principal:
+                Service: 
+                  - "codebuild.amazonaws.com"
+              Action: 
+                - 'sts:AssumeRole'
+        Path: /service-role/
+        Policies:
+          - PolicyName: "CodeBuildAccessPolicy"
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Resource:
+                    -  Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                - Effect: Allow
+                  Resource:  
+                    - Fn::Sub: arn:aws:s3:::codepipeline-${AWS::Region}-*
+                  Action:
+                    - s3:PutObject
+                    - s3:GetObject
+                    - s3:GetObjectVersion
+                    - s3:GetBucketAcl
+                    - s3:GetBucketLocation
+                - Effect: Allow
+                  Action:
+                    - codebuild:CreateReportGroup
+                    - codebuild:CreateReport
+                    - codebuild:UpdateReport
+                    - codebuild:BatchPutTestCases
+                    - codebuild:BatchPutCodeCoverages
+                  Resource:
+                    - Fn::Sub: arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/SimpleDockerBaseImageProject-*
+                - Action:
+                    - 'ecr:BatchCheckLayerAvailability'
+                    - 'ecr:CompleteLayerUpload'
+                    - 'ecr:GetAuthorizationToken'
+                    - 'ecr:InitiateLayerUpload'
+                    - 'ecr:PutImage'
+                    - 'ecr:UploadLayerPart'
+                  Resource: '*'
+                  Effect: Allow
