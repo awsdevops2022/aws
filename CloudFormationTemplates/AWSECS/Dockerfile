@@ -9,9 +9,9 @@ FROM ubuntu as BuildStage
 ENV Region=$Region_name
  
 
-RUN apt-get install -y apt-transport-https && \
-    apt-get install curl -y && \
-    apt-get install unzip -y && \
+
+RUN apt-get update -y && apt-get install curl && \
+    apt-get install unzip && \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install && \
