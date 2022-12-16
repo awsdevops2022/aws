@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >-
+ CodeBuild run
+
+Parameters:
+  GitHubUrl:
+    Type: String
+    Description: Url for GitHub repo
+    Default: "https://github.com/awsdevops2022/aws.git"
+
+  GitHubAccessToken:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Name of parameter with GitHub access token
+    Default: codebuild-github-token
+    NoEcho: True
+
+Resources: 
+  CodeBuildCredentials:
+    Type: AWS::CodeBuild::SourceCredential
+    Properties:
+      ServerType: GITHUB
+      AuthType: PERSONAL_ACCESS_TOKEN
+      Token: !Ref GitHubAccessToken
+  MyCodeBuild:
+    Type: AWS::CodeBuild::Project
+    Properties: 
+      Artifacts: 
+        Type: NO_ARTIFACTS
+      Description: To test Code build docker image
+      Environment: 
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: 
+          - Name: Region_name
+            Type: PLAINTEXT
+            Value: DEV
+          - Name: "AWS_DEFAULT_REGION"
+            Value: !Sub "${AWS::Region}"
+          - Name: "AWS_ACCOUNT_ID"
+            Value: !Sub "${AWS::AccountId}"
+          - Name: "IMAGE_REPO_NAME"
+            Value: "base-images"
+          - Name: "IMAGE_TAG"
+            Value: "latest"
+        Image: aws/codebuild/standard:4.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      LogsConfig: 
+          CloudWatchLogs: 
+            Status: ENABLED
+      Name: MyCBTest
+      ServiceRole: !GetAtt [ CodeBuildServiceRole, Arn ]
+      Source: 
+          Auth: 
+            SourceAuth
+          BuildSpec: buildspec.yml
+          Location: !Ref GitHubUrl
+          Type: GITHUB
+      SourceVersion: "development"
+      Tags: 
+        - Tag
+      TimeoutInMinutes: 5
+      Triggers: 
+        BuildType: BUILD
+        FilterGroups: 
+          - - Type: EVENT
+              Pattern: PUSH 
+            - Type: HEAD_REF
+              Pattern: ^refs/heads/development$
+              ExcludeMatchedPattern: false 
+        Webhook: true
+      # VpcConfig: 
+      #   VpcConfig
+
+
+#IAM role for CodeBuild
+
+CodeBuildServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName:
+        Fn::Sub: CodeBuildServiceRole-${AWS::StackName}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement: 
+          - Effect: Allow
+            Principal:
+              Service: 
+                - "codebuild.amazonaws.com"
+            Action: 
+              - 'sts:AssumeRole'
+      Path: /service-role/
+      Policies:
+        - PolicyName: "CodeBuildAccessPolicy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Resource:
+                  -  Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+              - Effect: Allow
+                Resource:  
+                  - Fn::Sub: arn:aws:s3:::codepipeline-${AWS::Region}-*
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketAcl
+                  - s3:GetBucketLocation
+              - Effect: Allow
+                Action:
+                  - codebuild:CreateReportGroup
+                  - codebuild:CreateReport
+                  - codebuild:UpdateReport
+                  - codebuild:BatchPutTestCases
+                  - codebuild:BatchPutCodeCoverages
+                Resource:
+                  - Fn::Sub: arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/SimpleDockerBaseImageProject-*
+              - Action:
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:CompleteLayerUpload'
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:InitiateLayerUpload'
+                  - 'ecr:PutImage'
+                  - 'ecr:UploadLayerPart'
+                Resource: '*'
+                Effect: Allow
