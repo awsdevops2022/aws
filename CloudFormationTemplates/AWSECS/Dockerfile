@@ -7,8 +7,8 @@ RUN apt-get update -y && \
 
 FROM python:3.8.13-slim-buster as BuildStage
 ENV Region=$Region_name
-RUN apt-get install -y wget && \
-    apt-get install curl -y && \
+ 
+RUN apt-get install curl -y && \
     apt-get install unzip -y && \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
