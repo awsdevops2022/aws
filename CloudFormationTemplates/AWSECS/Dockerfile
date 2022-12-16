@@ -8,7 +8,7 @@ RUN apt-get update -y && \
 FROM python:3.8.13-slim-buster AS BuildStage
 ENV Region=$Region_name
  
- 
+
 RUN apt-get update -y && apt-get install curl -y && \
     apt-get install unzip -y && \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
@@ -17,9 +17,9 @@ RUN apt-get update -y && apt-get install curl -y && \
     aws --version && \
     apt-get install python3-pip -y &&\
     pip3 --version && \
-    echo ${Region}
+    echo ${Region} && \
+    mkdir -p ./src
 
-
-COPY --from=Checkout CloudFormationTemplates/AWSECS/example.py .
-WORKDIR /AWSECS
+WORKDIR /src
+COPY --from=Checkout aws/CloudFormationTemplates/AWSECS/example.py .
 CMD ["python", "example.py"]
