@@ -18,5 +18,6 @@ RUN apt-get update -y && apt-get install curl -y && \
     mkdir -p ./src 
 
 WORKDIR /src
+RUN pwd
 COPY --from=Checkout aws/CloudFormationTemplates/AWSECS/example.py .
-RUN aws s3 cp example.py s3://bluewaterbucket
+CMD ["python3", "example.py"]

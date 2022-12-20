@@ -99,8 +99,7 @@ Resources:
                     - logs:CreateLogStream
                     - logs:PutLogEvents
                 - Effect: Allow
-                  Resource:  
-                    - Fn::Sub: arn:aws:s3:::codepipeline-${AWS::Region}-*
+                  Resource: "arn:aws:s3:::bluewaterbucket"
                   Action:
                     - s3:PutObject
                     - s3:GetObject
@@ -125,7 +124,4 @@ Resources:
                     - 'ecr:UploadLayerPart'
                   Resource: '*'
                   Effect: Allow
-                - Effect: Allow
-                  Action:
-                    - 's3:PutObject'
-                  Resource: 'arn:aws:s3:::bluewaterbucket'
+                
