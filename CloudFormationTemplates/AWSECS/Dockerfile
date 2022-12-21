@@ -14,10 +14,11 @@ RUN apt-get update -y && apt-get install curl -y && \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install && \
-    apt-get install python3-pip -y &&\
-    mkdir -p ./src && \
-    pwd
+    # apt-get install python3-pip -y &&\
+    mkdir -p ./src 
+
 
 WORKDIR /src
 COPY --from=Checkout aws/CloudFormationTemplates/AWSECS/example.py .
+RUN aws s3 cp . s3://bluewaterbucket
 CMD ["python3", "example.py"]
