@@ -20,5 +20,6 @@ RUN apt-get update -y && apt-get install curl -y && \
 
 WORKDIR /src
 COPY --from=Checkout aws/CloudFormationTemplates/AWSECS/example.py .
-RUN aws s3 cp . s3://bluewaterbucket
+RUN aws sts get-caller-identity && \
+    aws s3 cp . s3://bluewaterbucket
 CMD ["python3", "example.py"]
