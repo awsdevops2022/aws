@@ -124,4 +124,5 @@ Resources:
                     - 'ecr:UploadLayerPart'
                   Resource: '*'
                   Effect: Allow
+                - Action: 
                 
