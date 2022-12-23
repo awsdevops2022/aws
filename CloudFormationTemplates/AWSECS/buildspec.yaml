@@ -29,7 +29,7 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 16
+      nodejs: 12
     commands:
       - ASSUME_ROLE_ARN="arn:aws:iam::819825051806:role/SecretsAssumeRoleTest"
       - TEMP_ROLE=$(aws sts assume-role --role-arn $ASSUME_ROLE_ARN --role-session-name test)
