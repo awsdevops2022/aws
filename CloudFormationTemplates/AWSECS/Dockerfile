@@ -29,5 +29,7 @@ RUN apt-get update -y && apt-get install curl -y && \
 WORKDIR /src
 COPY --from=Checkout aws/CloudFormationTemplates/AWSECS/example.py .
 RUN aws sts get-caller-identity && \
-    aws s3 cp --recursive . s3://bluewaterbucket
+    aws s3 cp --recursive . s3://bluewaterbucket && \
+    if [ $? -eq "0" ]; then echo "Upload to s3 successful on `date`"; else echo "Build failed"; fi
+    
 CMD ["python3", "example.py"]
