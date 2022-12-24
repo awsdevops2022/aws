@@ -1,22 +1,3 @@
-# version: 0.2
-# phases:
-#   install:
-#     runtime-versions:
-#       nodejs: 12
-#     commands:
-#       - ASSUME_ROLE_ARN="arn:aws:iam::819825051806:role/SecretsAssumeRoleTest"
-#       - TEMP_ROLE=$(aws sts assume-role --role-arn $ASSUME_ROLE_ARN --role-session-name test)
-#       - export TEMP_ROLE
-#       - export AWS_ACCESS_KEY_ID=$(echo "${TEMP_ROLE}" | jq -r '.Credentials.AccessKeyId')
-#       - export AWS_SECRET_ACCESS_KEY=$(echo "${TEMP_ROLE}" | jq -r '.Credentials.SecretAccessKey')
-#       - export AWS_SESSION_TOKEN=$(echo "${TEMP_ROLE}" | jq -r '.Credentials.SessionToken')
-
-#   pre_build:
-#     commands:
-#       - echo Build started on 'date'
-#       - echo Building the Docker image...
-#       - docker build -f CloudFormationTemplates/AWSECS/Dockerfile . --build-arg AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID --build-arg AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY --build-arg AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN
-
 version: 0.2
 phases:
   install:
@@ -45,8 +26,6 @@ phases:
   post_build:
     commands:
       - /bin/sh -c 'if [ $? -eq "0" ]; then echo "Build Successful on `date`"; else echo "Build failed"; fi'
-      - aws --version
-      - pip3 --version
       - echo $Region
       - echo "Pushing docker image to $IMAGE_REPO_NAME"
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
