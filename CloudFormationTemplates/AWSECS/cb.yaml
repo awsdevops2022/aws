@@ -65,8 +65,7 @@ Resources:
               Pattern: ^refs/heads/development$
               ExcludeMatchedPattern: false 
         Webhook: true
-      # VpcConfig: 
-      #   VpcConfig
+
 
 
 #IAM role for CodeBuild
@@ -124,5 +123,4 @@ Resources:
                     - 'ecr:UploadLayerPart'
                   Resource: '*'
                   Effect: Allow
-                - Action: 
                 

@@ -26,6 +26,5 @@ phases:
   post_build:
     commands:
       - /bin/sh -c 'if [ $? -eq "0" ]; then echo "Build Successful on `date`"; else echo "Build failed"; fi'
-      - echo $Region
       - echo "Pushing docker image to $IMAGE_REPO_NAME"
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
