@@ -69,7 +69,7 @@ Resources:
       QueuedTimeoutInMinutes: 5
       ServiceRole: !GetAtt DemoCodeBuildRole.Arn                    #Check this
       Source: 
-        BuildSpec: AWS_Batch_s3_ECS/buildspec.yml
+        BuildSpec: CloudFormationTemplates/AWS_Batch_s3_ECS/buildspec.yml
         Type: CODEPIPELINE
       TimeoutInMinutes: 8
 
