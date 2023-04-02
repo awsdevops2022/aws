@@ -1,6 +1,4 @@
 FROM python:3.8.13-slim-buster 
-RUN pwd && ls && mkdir -p src && cd src 
+RUN pwd && ls && mkdir -p src 
 COPY ./sample.py src
-RUN pwd && ls
 WORKDIR /src
-RUN ls
