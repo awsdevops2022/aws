@@ -8,6 +8,6 @@ RUN apt-get update -y && apt-get install curl -y && \
     ./aws/install && \
     mkdir -p src && \ 
     python --version && \
-    && aws --version
+    aws --version
 COPY ./sample.py src
 WORKDIR /src
