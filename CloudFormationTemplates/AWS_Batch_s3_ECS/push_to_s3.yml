@@ -1,0 +1,424 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: To push when an update in GitHub files to s3
+
+Parameters:
+  GithubRepo:
+    Description: The repository name
+    Type: String
+    Default: awsdevops2022/aws
+
+
+Resources:
+  Mys3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: my-demo-push-to-s3
+
+
+  #ECR
+
+  DemoEcrRepo:
+    Type: AWS::ECR::Repository
+    Properties: 
+      RepositoryName: demo-s3-push
+      # RepositoryPolicyText:
+      #   Version: 2012-10-17
+      #   Statement:
+      #     - Sid: CodeBuildAccess
+      #       Effect: Allow
+      #       Principal:
+      #         Service: codebuild.amazonaws.com
+      #       Action:
+      #         - "ecr:GetDownloadUrlForLayer"
+      #         - "ecr:BatchGetImage"
+      #         - "ecr:BatchCheckLayerAvailability"
+      #         - "ecr:PutImage"
+
+  #CodeBuild
+
+  # CodeBuildSourceCredential:
+  #   Type: 'AWS::CodeBuild::SourceCredential'
+  #   Properties:
+  #     Token: '{{resolve:secretsmanager:gitPAT:SecretString:pat}}'
+  #     ServerType: GITHUB
+  #     AuthType: PERSONAL_ACCESS_TOKEN
+
+  DemoCreateImageBuild:
+    Type: AWS::CodeBuild::Project
+    DependsOn: DemoCodeBuildRole
+    Properties: 
+      Artifacts: 
+        Type: CODEPIPELINE
+      Description: Builds docker image
+      Environment: 
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables: 
+            #BUILD VARIABLES
+          - Name: "AWS_DEFAULT_REGION"
+            Value: !Sub "${AWS::Region}"
+          - Name: "AWS_ACCOUNT_ID"
+            Value: !Sub "${AWS::AccountId}"
+          - Name: "IMAGE_REPO_NAME"
+            Value: !Ref DemoEcrRepo
+          - Name: "IMAGE_TAG"
+            Value: "latest"
+        Image: aws/codebuild/standard:4.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      Name: DockerBuildImage
+      QueuedTimeoutInMinutes: 5
+      ServiceRole: !GetAtt DemoCodeBuildRole.Arn                    #Check this
+      Source: 
+        BuildSpec: AWS_Batch_s3_ECS/buildspec.yml
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 8
+
+
+  DemoCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties: 
+      ArtifactStore: 
+        Location: !Ref Mys3Bucket
+        Type: S3
+      Name: DemoCodePipeline
+      RoleArn: !GetAtt DemoCodepipelineRole.Arn
+      Stages: 
+        - 
+          Name: Source
+          Actions:
+            - 
+              ActionTypeId: 
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: 1
+              Name: SourceAction
+              Configuration:
+                ConnectionArn: arn:aws:codestar-connections:ap-south-1:819825051806:connection/7f7da864-75f1-4777-a29c-146e9241011a
+                FullRepositoryId: !Ref GithubRepo
+                BranchName: "development"
+              OutputArtifacts: 
+                - Name: DemoFirstOutputArtifact
+              RunOrder: 1
+        - 
+          Name: ImageBuild
+          Actions: 
+            - 
+              ActionTypeId: 
+                Category: Build
+                Owner: AWS
+                Version: '1'
+                Provider: CodeBuild
+              OutputArtifacts:
+                - 
+                  Name: DemoBuildArtifact
+              RunOrder: 1
+              Name: DockerImageBuild
+              Configuration:
+                ProjectName: !Ref DemoCreateImageBuild
+              InputArtifacts:
+                - Name: DemoFirstOutputArtifact
+
+  #AWS Batch
+
+  # DemoBatchVpc:
+  #   Type: AWS::EC2::VPC
+  #   Properties:
+  #     CidrBlock: "10.0.0.0/16"
+  #     EnableDnsHostnames: true
+  #     EnableDnsSupport: true
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub "batchVPC-${AWS::StackName}"
+
+
+  # DemoBatchSubnetPublic:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     AvailabilityZone: !Ref listofAZs
+  #     CidrBlock: "10.0.1.0/24"
+  #     MapPublicIpOnLaunch: true
+  #     VpcId: !Ref DemoBatchVpc
+
+
+  # DemoBatchSecurityGroup:
+  #   Type: 'AWS::EC2::SecurityGroup'
+  #   Properties:
+  #     GroupDescription: "AWSBatch security group"
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: '22'
+  #         ToPort: '22'
+  #         CidrIp: 0.0.0.0/0
+  #       - IpProtocol: tcp
+  #         FromPort: '8080'
+  #         ToPort: '8080'
+  #         CidrIp: 0.0.0.0/0
+  #     VpcId: !Ref DemoBatchVpc
+
+
+  # DemoComputeEnv:
+  #   Type: 'AWS::Batch::ComputeEnvironment'
+  #   Properties:
+  #     ComputeEnvironmentName: !Join
+  #       - ''
+  #       - 
+  #         - !Sub "${AWS::StackName}-"
+  #         - "MyDemoComputeEnv"
+  #     ComputeResources:
+  #       MaxvCpus: 36    #make sure the number of vCPUs match the instance type in the parameters. Ref-https://aws.amazon.com/ec2/instance-types/
+  #       SecurityGroupIds:
+  #         - !GetAtt DemoBatchSecurityGroup.GroupId
+  #       Subnets:
+  #         - !Ref DemoBatchSubnetPublic
+  #       Type: FARGATE
+  #     State: ENABLED
+  #     Type: MANAGED
+  #     ServiceRole: !GetAtt DemoBatchJobServiceRole.Arn
+
+
+  # DemoBatchJobDefinition:
+  #   Type: AWS::Batch::JobDefinition
+  #   Properties:
+  #     ContainerProperties:
+  #       Command: 
+  #         - aws s3 cp sample.py s3://my-demo-push-to-s3/
+  #       ExecutionRoleArn: !GetAtt DemoEcsTaskExecRole.Arn                        #check this
+  #       FargatePlatformConfiguration: 
+  #         PlatformVersion: LATEST
+  #       Image: !Join
+  #         - ''
+  #         - 
+  #           - !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/'
+  #           - !Ref DemoEcrRepo
+  #           - ':latest'
+  #       Privileged: false
+  #       ReadonlyRootFilesystem: false
+  #       ResourceRequirements:
+  #         - Type: MEMORY
+  #           Value: 1024 #in MiB
+  #         - Type: VCPU
+  #           Value: 0.5
+  #     JobDefinitionName: "DemoBatchDef"
+  #     PlatformCapabilities:
+  #      - FARGATE
+  #     Timeout:
+  #       AttemptDurationSeconds: 120
+  #     Type: container
+
+
+  # MyJobQueue:
+  #   Type: AWS::Batch::JobQueue
+  #   Properties:
+  #     ComputeEnvironmentOrder:
+  #       - ComputeEnvironment: !Ref DemoComputeEnv
+  #         Order: 1
+  #     JobQueueName: !Sub "Demo-BatchQueue-${AWS::StackName}"
+  #     Priority: 1
+  #     State: ENABLED
+
+
+  #IAM Roles
+
+  #CodePipeline Role
+
+  DemoCodepipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: "/"
+      Description: Codepipeline to build Docker image role
+      Policies:
+        - 
+          PolicyName: DemoCodepipelineExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action:
+                  - 'iam:PassRole'
+                Resource: '*'
+                Effect: Allow
+                Condition:
+                  StringEqualsIfExists:
+                    'iam:PassedToService':
+                      - ecs-tasks.amazonaws.com
+              - Action:
+                  - 'codestar-connections:UseConnection'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'cloudwatch:*'
+                  - 's3:*'
+                  - 'ecs:*'
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - 'codebuild:BatchGetBuilds'
+                  - 'codebuild:StartBuild'
+                  - 'codebuild:BatchGetBuildBatches'
+                  - 'codebuild:StartBuildBatch'
+                Resource: '*'
+                Effect: Allow
+
+
+  #CodeBuild Role
+  DemoCodeBuildRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+        RoleName: DemoCBRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement: 
+            - Effect: Allow
+              Principal:
+                Service: 
+                  - "codebuild.amazonaws.com"
+              Action: 
+                - 'sts:AssumeRole'
+        ManagedPolicyArns:
+          - 
+            arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+        Path: /service-role/
+        Policies:
+          - PolicyName: "CodeBuildAccessPolicy"
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Resource:
+                    -  Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                - Effect: Allow
+                  Resource: '*'
+                  Action:
+                    - s3:PutObject
+                    - s3:GetObject
+                    - s3:GetObjectVersion
+                    - s3:GetBucketAcl
+                    - s3:GetBucketLocation
+                - Action:
+                    - 'ecr:BatchCheckLayerAvailability'
+                    - 'ecr:CompleteLayerUpload'
+                    - 'ecr:GetAuthorizationToken'
+                    - 'ecr:InitiateLayerUpload'
+                    - 'ecr:PutImage'
+                    - 'ecr:UploadLayerPart'
+                  Resource: '*'
+                  Effect: Allow
+                -
+                  Effect: Allow
+                  Action:
+                    - 'secretsmanager:GetSecretValue'
+                    - 'secretsmanager:ListSecrets'
+                  Resource: '*'
+
+
+  #AWS Batch Role
+
+  DemoBatchJobServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - batch.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Description: Service role for AWS Batch
+      Policies:
+        - PolicyName: !Join
+            - ''
+            - - "Demo"
+              - !Sub "-batchJobPolicy-${AWS::StackName}"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:DescribeClusters'
+                  - 'ecs:DescribeContainerInstances'
+                  - 'ecs:DescribeTaskDefinition'
+                  - 'ecs:DescribeTasks'
+                  - 'ecs:ListAccountSettings'
+                  - 'ecs:ListClusters'
+                  - 'ecs:ListContainerInstances'
+                  - 'ecs:ListTaskDefinitionFamilies'
+                  - 'ecs:ListTaskDefinitions'
+                  - 'ecs:ListTasks'
+                  - 'ecs:CreateCluster'
+                  - 'ecs:DeleteCluster'
+                  - 'ecs:RegisterTaskDefinition'
+                  - 'ecs:DeregisterTaskDefinition'
+                  - 'ecs:RunTask'
+                  - 'ecs:StartTask'
+                  - 'ecs:StopTask'
+                  - 'ecs:UpdateContainerAgent'
+                  - 'ecs:DeregisterContainerInstance'
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogGroups'
+                  - 'iam:GetInstanceProfile'
+                  - 'iam:GetRole'
+                Resource: '*'
+              - Effect: Allow
+                Action: 'iam:PassRole'
+                Resource:
+                  - '*'
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService':
+                      - ecs-tasks.amazonaws.com
+              - Effect: Allow
+                Action: 'iam:CreateServiceLinkedRole'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'iam:AWSServiceName':
+                      - ecs.amazonaws.com
+      RoleName: !Join
+        - ''
+        - - "Demo"
+          - !Sub "-BatchJobServiceRole-${AWS::StackName}"
+
+
+  DemoEcsTaskExecRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Description: To allow container to access s3 bucket
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - 
+          PolicyName: DemoEcsS3AccessPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                Resource: '*'
