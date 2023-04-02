@@ -21,18 +21,18 @@ Resources:
     Type: AWS::ECR::Repository
     Properties: 
       RepositoryName: demo-s3-push
-      # RepositoryPolicyText:
-      #   Version: 2012-10-17
-      #   Statement:
-      #     - Sid: CodeBuildAccess
-      #       Effect: Allow
-      #       Principal:
-      #         Service: codebuild.amazonaws.com
-      #       Action:
-      #         - "ecr:GetDownloadUrlForLayer"
-      #         - "ecr:BatchGetImage"
-      #         - "ecr:BatchCheckLayerAvailability"
-      #         - "ecr:PutImage"
+      RepositoryPolicyText:
+        Version: 2012-10-17
+        Statement:
+          - Sid: CodeBuildAccess
+            Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action:
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:PutImage"
 
   #CodeBuild
 
