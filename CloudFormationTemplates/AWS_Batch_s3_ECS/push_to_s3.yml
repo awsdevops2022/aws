@@ -7,6 +7,15 @@ Parameters:
     Type: String
     Default: awsdevops2022/aws
 
+  listofAZs:
+    Description: Select the AZ
+    Type: String
+    Default: "ap-south-1a"
+    AllowedValues:
+      - ap-south-1a
+      - ap-south-1b
+      - us-east-2a
+
 
 Resources:
   Mys3Bucket:

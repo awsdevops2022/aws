@@ -25,6 +25,7 @@ phases:
       - cd CloudFormationTemplates/AWS_Batch_s3_ECS
       - ls
       - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG -f ./Dockerfile .
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG 
       - echo "Build completed on `date`"
   post_build:
     on-failure: ABORT
