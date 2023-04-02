@@ -22,8 +22,8 @@ phases:
     on-failure: ABORT
     commands:
       - echo "Build started on `date`"
-      - pwd
       - ls
+      - cd CloudFormationTemplates/AWS_Batch_s3_ECS
       - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG -f CloudFormationTemplates/AWS_Batch_s3_ECS/Dockerfile .
       # - cd CloudFormationTemplates/AWS_Batch_s3_ECS
       - echo "Build completed on `date`"
