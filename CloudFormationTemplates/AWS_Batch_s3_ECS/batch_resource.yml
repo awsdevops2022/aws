@@ -300,6 +300,7 @@ Resources:
         Command:
           - aws
           - s3
+          - cp
           - sample.py
           - s3://my-demo-push-to-s3/
           # - aws s3 cp sample.py s3://my-demo-push-to-s3/
