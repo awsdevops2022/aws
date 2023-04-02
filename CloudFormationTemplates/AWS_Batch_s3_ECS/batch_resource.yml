@@ -298,7 +298,9 @@ Resources:
         NetworkConfiguration: 
           AssignPublicIp: ENABLED
         Command:
-          - aws s3 cp sample.py s3://my-demo-push-to-s3/
+          - python
+          - sample.py
+          # - aws s3 cp sample.py s3://my-demo-push-to-s3/
         ResourceRequirements:
           - Type: VCPU
             Value: 0.25

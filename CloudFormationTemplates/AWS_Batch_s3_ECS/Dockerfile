@@ -3,3 +3,4 @@ RUN mkdir -p src
 WORKDIR /src
 COPY ./sample.py src
 WORKDIR /src
+RUN ls
