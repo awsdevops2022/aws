@@ -9,6 +9,7 @@ phases:
       - echo "Enabling docker daemon..."
       - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 --storage-driver=overlay&
       - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
+      - pwd
       - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
       - unzip awscliv2.zip
       - sudo ./aws/install -i /usr/local/aws-cli -b /usr/local/bin
@@ -24,7 +25,6 @@ phases:
       - echo "Build started on `date`"
       #pwd will be src 
       - cd CloudFormationTemplates/AWS_Batch_s3_ECS
-      - ls
       - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG -f ./Dockerfile .
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG 
       - echo "Build completed on `date`"
