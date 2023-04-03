@@ -10,10 +10,12 @@ phases:
       - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://0.0.0.0:2375 --storage-driver=overlay&
       - timeout 15 sh -c "until docker info; do echo .; sleep 1; done"
       - pwd
+      - ls
       - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
       - unzip awscliv2.zip
       - sudo ./aws/install -i /usr/local/aws-cli -b /usr/local/bin
       - aws --version
+      - ls
   pre_build:
     on-failure: ABORT
     commands:
