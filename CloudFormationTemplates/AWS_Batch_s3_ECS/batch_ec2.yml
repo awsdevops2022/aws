@@ -1,0 +1,291 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'This stack deploys AWS resources needed to run container in AWS Batch Fargate.'
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Batch Service Parameters'
+      Parameters:
+      - ServiceName
+      - Image
+      - TimeoutInSeconds
+
+Parameters:
+  ServiceName:
+    Type: String
+    Default: transformation-batch-service
+  TimeoutInSeconds:
+    Type: Number
+    Description: 'Batch Job Timeout in sec.'
+    Default: 300
+  Image:
+    Description: 'Enter the Image URI'
+    Type: String
+  VpcId:
+    ConstraintDescription: This must be an existing VPC within the working region.
+    Type: 'AWS::EC2::VPC::Id'
+  Subnets:
+    ConstraintDescription: The subnet IDs must be within an existing VPC
+    Description: Public or external subnets for the availability zones
+    Type: 'List<AWS::EC2::Subnet::Id>'
+  SelectInstanceTypes:
+    Description: Select instance type for compute env
+    Type: String
+    Default: "c4.large"
+    AllowedValues:
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+ 
+Resources:
+  DemoServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+     LogGroupName: !Ref ServiceName
+     RetentionInDays: 30
+
+  DemoSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: 'transformation-sg'
+      GroupDescription: security group
+      VpcId: !Ref VpcId
+
+
+  AllowAllOutboundTraffic:
+    Type: 'AWS::EC2::SecurityGroupEgress'
+    Properties:
+      GroupId: !Ref DemoSecurityGroup
+      IpProtocol: 'tcp'
+      CidrIp: '0.0.0.0/0'
+      FromPort: 443
+      ToPort: 443
+      Description: 'Allowing access to https services'
+
+  # This is the role which is used by the Batch Job The policies below defines
+  # For EC2 type there is no need for Execution Role and Job Role 
+  
+  DemoBatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Join
+        - ""
+        - - !Ref ServiceName
+          - '-batch-service-role'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - batch.amazonaws.com
+            Action: [ 'sts:AssumeRole' ]
+      Path: /
+      Policies:
+        - PolicyName: "DemoEcrAccessRole"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                Resource: '*'
+        - PolicyName: !Join
+            - ""
+            - - !Ref ServiceName
+              - '-event-rule-policy'
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                - ec2:DescribeAccountAttributes
+                - ec2:DescribeInstances
+                - ec2:DescribeInstanceAttribute
+                - ec2:DescribeSubnets
+                - ec2:DescribeSecurityGroups
+                - ec2:DescribeKeyPairs
+                - ec2:DescribeImages
+                - ec2:DescribeImageAttribute
+                - ec2:DescribeSpotInstanceRequests
+                - ec2:DescribeSpotFleetInstances
+                - ec2:DescribeSpotFleetRequests
+                - ec2:DescribeSpotPriceHistory
+                - ec2:DescribeVpcClassicLink
+                - ec2:DescribeLaunchTemplateVersions
+                - ec2:CreateLaunchTemplate
+                - ec2:DeleteLaunchTemplate
+                - ec2:RequestSpotFleet
+                - ec2:CancelSpotFleetRequests
+                - ec2:ModifySpotFleetRequest
+                - ec2:TerminateInstances
+                - ec2:RunInstances
+                - autoscaling:DescribeAccountLimits
+                - autoscaling:DescribeAutoScalingGroups
+                - autoscaling:DescribeLaunchConfigurations
+                - autoscaling:DescribeAutoScalingInstances
+                - autoscaling:CreateLaunchConfiguration
+                - autoscaling:CreateAutoScalingGroup
+                - autoscaling:UpdateAutoScalingGroup
+                - autoscaling:SetDesiredCapacity
+                - autoscaling:DeleteLaunchConfiguration
+                - autoscaling:DeleteAutoScalingGroup
+                - autoscaling:CreateOrUpdateTags
+                - autoscaling:SuspendProcesses
+                - autoscaling:PutNotificationConfiguration
+                - autoscaling:TerminateInstanceInAutoScalingGroup
+                - ecs:DescribeClusters
+                - ecs:DescribeContainerInstances
+                - ecs:DescribeTaskDefinition
+                - ecs:DescribeTasks
+                - ecs:ListAccountSettings
+                - ecs:ListClusters
+                - ecs:ListContainerInstances
+                - ecs:ListTaskDefinitionFamilies
+                - ecs:ListTaskDefinitions
+                - ecs:ListTasks
+                - ecs:CreateCluster
+                - ecs:DeleteCluster
+                - ecs:RegisterTaskDefinition
+                - ecs:DeregisterTaskDefinition
+                - ecs:RunTask
+                - ecs:StartTask
+                - ecs:StopTask
+                - ecs:UpdateContainerAgent
+                - ecs:DeregisterContainerInstance
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:DescribeLogGroups
+                - iam:GetInstanceProfile
+                - iam:GetRole
+              Resource: "*"
+            - Effect: Allow
+              Action: ecs:TagResource
+              Resource:
+                - arn:aws:ecs:*:*:task/*_Batch_*
+            - Effect: Allow
+              Action: iam:PassRole
+              Resource:
+                - "*"
+              Condition:
+                StringEquals:
+                  iam:PassedToService:
+                    - ec2.amazonaws.com
+                    - ec2.amazonaws.com.cn
+                    - ecs-tasks.amazonaws.com
+            - Effect: Allow
+              Action: iam:CreateServiceLinkedRole
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  iam:AWSServiceName:
+                    - spot.amazonaws.com
+                    - spotfleet.amazonaws.com
+                    - autoscaling.amazonaws.com
+                    - ecs.amazonaws.com
+            - Effect: Allow
+              Action:
+                - ec2:CreateTags
+              Resource:
+                - "*"
+              Condition:
+                StringEquals:
+                  ec2:CreateAction: RunInstances
+
+
+  ecsRoleInstance:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      Path: /service-role/
+      RoleName: !Sub "ecsInstanceRole-${AWS::StackName}"
+
+
+  ecsroleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref ecsRoleInstance
+
+
+
+  ComputeEnvironment:
+    Type: 'AWS::Batch::ComputeEnvironment'
+    Properties:
+      ComputeEnvironmentName: DemoEc2ComputeNew1
+      ComputeResources:
+          AllocationStrategy: BEST_FIT
+          DesiredvCpus: 8
+          InstanceRole: 
+            Ref: ecsroleInstanceProfile
+          InstanceTypes: 
+            - optimal
+          MaxvCpus: 36    #make sure the number of vCPUs match the instance type in the parameters. Ref-https://aws.amazon.com/ec2/instance-types/
+          MinvCpus: 2
+          SecurityGroupIds:
+            - !Ref DemoSecurityGroup
+          Subnets: !Ref Subnets
+          Type: EC2
+      Type: MANAGED
+      ServiceRole: !GetAtt DemoBatchServiceRole.Arn
+
+
+  JobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref ComputeEnvironment
+      State: ENABLED
+      Priority: 1
+      JobQueueName: transformation-job-queue
+
+
+  DemoJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties: 
+      ContainerProperties: 
+          Command: 
+            - aws
+            - s3
+            - cp
+            - sample.py
+            - s3://my-demo-push-to-s3/
+          Image: !Ref Image
+          LogConfiguration: 
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref DemoServiceLogGroup
+              awslogs-region: !Ref AWS::Region
+          Memory: 2000
+          Privileged: True
+          Vcpus: 2
+      JobDefinitionName: DemoEc2JobDef
+      PropagateTags: True
+      Timeout: 
+        AttemptDurationSeconds: !Ref TimeoutInSeconds
+      Type: container
+
+
+Outputs:
+  StackName:
+    Description: 'Stack name.'
+    Value: !Sub '${AWS::StackName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-stackname'
