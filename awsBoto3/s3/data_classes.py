@@ -9,6 +9,11 @@ from dataclasses import dataclass
 import boto3
 from botocore.exceptions import ClientError
 from typing import Dict, List, Union
+import logging
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
 
 @dataclass
@@ -117,6 +122,7 @@ def upload_to_s3(object_name = None):
                 print("Failed to upload file")
                 return False
             return True
+
 
 
 if __name__ == '__main__':

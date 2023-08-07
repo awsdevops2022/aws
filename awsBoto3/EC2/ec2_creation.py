@@ -17,7 +17,7 @@ props = {
     'instance-type': ['t2.micro', 't2.medium']
 } 
 
-client = boto3.client("ec2", region_name= f"{props['region']}")
+client = boto3.client("ec2", region_name= f"{props['region']}") 
 
 
 def create_new_vpc():
