@@ -23,3 +23,5 @@ For Terraform examples - `https://github.com/awsdevops2022/Terraform`
  * `AWS SNS`
  * `AWS CodeBuild`
  * `AWS CodePipeline`
+ * `AWS MSK`
+ * `AWS LanguageExtensions Macros`

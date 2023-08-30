@@ -1,0 +1,3 @@
+# AWS Cli command for stack creation and deletion
+aws cloudformation create-stack --stack-name multi-resource --template-body file://multiple_resources.yaml --parameters ParameterKey=AttributeNameValue,ParameterValue=id --capabilities CAPABILITY_AUTO_EXPAND --region ap-south-1
+aws cloudformation delete-stack --stack-name multi-resource
