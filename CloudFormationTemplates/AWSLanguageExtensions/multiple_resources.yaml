@@ -1,0 +1,37 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Transform: AWS::LanguageExtensions
+
+Parameters:
+  AttributeNameValue:
+    Type: String
+    Description: Provide atrribute name for dynamo db table
+
+Resources:
+  Fn::ForEach::DynamoDBAndS3:
+    - Identifier
+    - - points
+      - score
+    - DynamoDB${Identifier}:
+        Type: AWS::DynamoDB::Table
+        Properties:
+          TableName:
+            Fn::Sub: Table${Identifier}
+          AttributeDefinitions:
+            - AttributeName: !Ref AttributeNameValue
+              AttributeType: S
+          KeySchema:
+            - AttributeName: !Ref AttributeNameValue
+              KeyType: HASH
+          ProvisionedThroughput:
+            ReadCapacityUnits: '5'
+            WriteCapacityUnits: '5'
+      s3Bucket${Identifier}:
+        Type: 'AWS::S3::Bucket'
+        Properties:
+          BucketName: !Join
+            - '-'
+            - - lang
+              - extensions
+              - sample
+              - !Sub ${Identifier}
